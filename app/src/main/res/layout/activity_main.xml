@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/mapView"
+            android:name="com.google.android.gms.maps.SupportMapFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/rfconnectbt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="60dp"
+            android:text="RFconnect"
+            app:layout_constraintStart_toStartOf="@+id/mapView"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <TextView
+            android:id="@+id/RFGpslatTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="10dp"
+            app:layout_constraintStart_toStartOf="@+id/rfconnectbt"
+            app:layout_constraintTop_toBottomOf="@+id/rfconnectbt" />
+
+        <TextView
+            android:id="@+id/RFGpslongTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            app:layout_constraintStart_toStartOf="@+id/RFGpslatTV"
+            app:layout_constraintTop_toBottomOf="@+id/RFGpslatTV" />
+
+        <TextView
+            android:id="@+id/RFGpsaltTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            app:layout_constraintStart_toStartOf="@+id/RFGpslongTV"
+            app:layout_constraintTop_toBottomOf="@+id/RFGpslongTV" />
+
+        <Button
+            android:id="@+id/btconnnectbt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="BTconnect"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <TextView
+            android:id="@+id/BTGpslatTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="8dp"
+            app:layout_constraintEnd_toEndOf="@+id/btconnnectbt"
+            app:layout_constraintTop_toBottomOf="@+id/btconnnectbt" />
+
+        <TextView
+            android:id="@+id/BTGpslongTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            app:layout_constraintEnd_toEndOf="@+id/BTGpslatTV"
+            app:layout_constraintTop_toBottomOf="@+id/BTGpslatTV" />
+
+        <Button
+            android:id="@+id/aatcenterBT"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:layout_marginBottom="10dp"
+            android:text="AATCenter"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/mapView" />
+
+        <TextView
+            android:id="@+id/BTaatstatusTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            app:layout_constraintEnd_toEndOf="@+id/BTGpslongTV"
+            app:layout_constraintTop_toBottomOf="@+id/BTGpslongTV" />
+
+        <Switch
+            android:id="@+id/testSw"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="15dp"
+            android:layout_marginTop="25dp"
+            android:text="Auto"
+            app:layout_constraintStart_toEndOf="@+id/rfconnectbt"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <Button
+            android:id="@+id/autostartBT"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="15dp"
+            android:layout_marginTop="16dp"
+            android:text="Auto"
+            app:layout_constraintStart_toEndOf="@+id/autoflyspeedET"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <Button
+            android:id="@+id/AutoresetBT"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="15dp"
+            android:layout_marginTop="16dp"
+            android:text="Reset"
+            app:layout_constraintStart_toEndOf="@+id/autostartBT"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <EditText
+            android:id="@+id/autoflyspeedET"
+            android:layout_width="80dp"
+            android:layout_height="41dp"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="20dp"
+            android:ems="10"
+            android:inputType="text"
+            android:textSize="14sp"
+            app:layout_constraintStart_toEndOf="@+id/textView"
+            app:layout_constraintTop_toTopOf="@+id/mapView" />
+
+        <TextView
+            android:id="@+id/textView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="30dp"
+            android:text="speed(m/s) : "
+            app:layout_constraintStart_toEndOf="@+id/testSw"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/autoflycircleBT"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:text="Circle"
+            app:layout_constraintStart_toEndOf="@+id/rfconnectbt"
+            app:layout_constraintTop_toTopOf="@+id/rfconnectbt" />
+
+        <Switch
+            android:id="@+id/circleSW"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="12dp"
+            app:layout_constraintStart_toEndOf="@+id/autoflycircleBT"
+            app:layout_constraintTop_toTopOf="@+id/autoflycircleBT" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
