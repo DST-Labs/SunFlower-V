@@ -117,14 +117,25 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     val statusUpdateTask: Runnable? = null
 
     // AAT 통신 변수 선언
-    private val AAT_ID: ByteArray =
+    private val App_ID: ByteArray =
         byteArrayOf(0xAA.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // AAT ID
-    private val APP_ID: ByteArray =
+    private val AAT_ID: ByteArray =
         byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // APP ID
+
+    var AAT_REQ_ID: ByteArray =
+        byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte())
 
     // AAT_CMD_REQ 정의
     private val CMD_Command_SYNC: ByteArray =
         byteArrayOf(0x00.toByte(), 0x00.toByte()) // AAT ID
+
+    private val CMD_Command_AAT_Reset: ByteArray =
+        byteArrayOf(0xA2.toByte(), 0x00.toByte()) // AAT ID
+
+    private val CMD_Command_Init_test: ByteArray =
+        byteArrayOf(0xA1.toByte(), 0x00.toByte()) // AAT ID
+
+
 
     // map 변수 선언
     lateinit var providerClient: FusedLocationProviderClient
@@ -159,12 +170,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private var Testradius : Double = 1500.0 // 비행 원형 반지름
     private var TestradiusPoint :Int = 12 // 비행 포인트 개수 12
     var testcricleSW : Boolean = true
+    var CMD_REQ_SW : Boolean = false
 
     private var dronepolyline: Polyline? = null
 
     var CountSendDroneLOC_IND : Int = 0
     var CountSendDroneLOC_gps : Int = 0
     var testag : Int = 0
+
+    val dronelogv : String = "Drone Protocol Log"
 
     // lifecycle
     override fun onStart() {
@@ -306,11 +320,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         // AAT 위치를 중앙으로하는 맵 이동
         binding.aatcenterBT.setOnClickListener {
-            moveATTcenterMap(AATlat,AATlong)
-            sendDroneLOCIND(dronelat,dronelong,dronealt)
+            if(!CMD_REQ_SW){
+                sendDroneLOCIND(dronelat,dronelong,dronealt)
+            }
             if(!Autoflyis){
+                moveATTcenterMap(AATlat,AATlong)
                 movemarker(dronelat,dronelong,AATlat,AATlong)
             }
+        }
+
+        binding.aatCmdReqBT.setOnClickListener{
+            sendCMDREQ(CMD_Command_Init_test)
         }
         requestBluetoothPermissions()
 
@@ -551,7 +571,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                             binding.RFGpslongTV.text = "longitude : $dronelong"
                             binding.RFGpsaltTV.text = "altitude : $dronealt"
                             movemarker(latLng.latitude, latLng.longitude, AATlat, AATlong)
-                            sendDroneLOCIND(dronelat,dronelong,dronealt)
+                            if(!CMD_REQ_SW){
+                                sendDroneLOCIND(dronelat,dronelong,dronealt)
+                            }
                             if(index == automarkerList.size - 1){
                                 CountSendDroneLOC_IND = 0
                                 CountSendDroneLOC_gps = 0
@@ -1051,17 +1073,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val startREQ = ByteArray(12)
         startREQ[0] = 0xAA.toByte() // STX
         startREQ[1] = 0x08.toByte() // LEN 08 > 10
-        memcpy(startREQ, 2, AAT_ID, 0, 4) // AAT_ID
-        memcpy(startREQ, 6, APP_ID, 0, 4) // APP_ID
+        memcpy(startREQ, 2, AAT_ID, 0, 4) // App_ID
+        memcpy(startREQ, 6, App_ID, 0, 4) // AAT_ID
         startREQ[10] = 0xFF.toByte() // Checksum / 0F > FF
         startREQ[11] = 0x55.toByte() // ETX
 
         // AAT 전달용 StartREQ protocol 전달
         try {
             outputStream!!.write(startREQ)
-            Log.d(ContentValues.TAG, "Sent StartREQ - " + bytesToHex(startREQ))
+            Log.d(dronelogv, "Sent StartREQ - " + bytesToHex(startREQ))
         } catch (e: IOException) {
-            Log.e(ContentValues.TAG, "Error sending StartREQ", e)
+            Log.e(dronelogv, "Error sending StartREQ", e)
             throw e
         }
     }
@@ -1073,7 +1095,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val stopREQ = ByteArray(9)
         stopREQ[0] = 0xAA.toByte() // STX
         stopREQ[1] = 0x05.toByte() // LEN
-        memcpy(stopREQ, 2, AAT_ID, 0, 4) // AAT_ID
+        memcpy(stopREQ, 2, App_ID, 0, 4) // App_ID
         stopREQ[6] = 0x0A.toByte() // Request
         stopREQ[7] = 0xFF.toByte() // Checksum
         stopREQ[8] = 0x55.toByte() // ETX
@@ -1081,9 +1103,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // StopREQ protocol 전달
         try {
             outputStream!!.write(stopREQ)
-            Log.d(ContentValues.TAG, "Sent StopREQ - " + bytesToHex(stopREQ))
+            Log.d(dronelogv, "Sent StopREQ - " + bytesToHex(stopREQ))
         } catch (e: IOException) {
-            Log.e(ContentValues.TAG, "Error sending StopREQ", e)
+            Log.e(dronelogv, "Error sending StopREQ", e)
             throw e
         }
     }
@@ -1095,7 +1117,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val CMDREQ = ByteArray(10)
         CMDREQ[0] = 0xAA.toByte() // STX
         CMDREQ[1] = 0x06.toByte() // LEN
-        memcpy(CMDREQ, 2, AAT_ID, 0, 4) // AAT_ID
+        memcpy(CMDREQ, 2, AAT_REQ_ID, 0, 4) // App_ID
         memcpy(CMDREQ, 6, Command, 0, 2) // AAT_ID
         CMDREQ[8] = 0xFF.toByte() // Checksum
         CMDREQ[9] = 0x55.toByte() // ETX
@@ -1103,9 +1125,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // sendCMDREQ protocol 전달
         try {
             outputStream!!.write(CMDREQ)
-            Log.d(ContentValues.TAG, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
+            Log.d(dronelogv, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
+            CMD_REQ_SW = true
         } catch (e: IOException) {
-            Log.e(ContentValues.TAG, "Error sending sendCMDREQ", e)
+            Log.e(dronelogv, "Error sending sendCMDREQ", e)
             throw e
         }
     }
@@ -1126,10 +1149,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
 
         // AAT 전달용 DroneLOCIND 생성
-        val gpsData = ByteArray(28)
+        val gpsData = ByteArray(29)
         gpsData[0] = 0xAA.toByte() // STX
-        gpsData[1] = 0x18.toByte() // LEN
-        memcpy(gpsData, 2, AAT_ID, 0, 4) // AAT_ID
+        gpsData[1] = 0x19.toByte() // LEN
+        memcpy(gpsData, 2, App_ID, 0, 4) // App_ID
         memcpy(gpsData, 6, longToBytes(droneLatitudeIntPart), 0, 4) //drone_Latitude integer part
         memcpy(
             gpsData,
@@ -1159,20 +1182,21 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             0,
             4
         ) // drone_Altitude
-        gpsData[26] = 0xFF.toByte() // Checksum
-        gpsData[27] = 0x55.toByte() // ETX
+        gpsData[26] = 0x0F.toByte() // Drone status
+        gpsData[27] = 0xFF.toByte() // Checksum
+        gpsData[28] = 0x55.toByte() // ETX
 
         // AAT 전달용 DroneLOCIND protocol 전달
         try {
             outputStream!!.write(gpsData)
             ++CountSendDroneLOC_IND
             Log.d(
-                ContentValues.TAG,
+                dronelogv,
                 "Sent DroneLOC_IND / Count : " + CountSendDroneLOC_IND.toString() + " / GPSupdatecount : " + CountSendDroneLOC_gps.toString() + " / LatInt = " + droneLatitudeIntPart + " / LatFrac = " + droneLatitudeFracPart + " / LonInt = " + droneLongitudeIntPart + " / LonFrac = " + droneLongitudeFracPart
             )
         } catch (e: IOException) {
             e.printStackTrace()
-            Log.e(ContentValues.TAG, "Error sending DroneLOC_IND", e)
+            Log.e(dronelogv, "Error sending DroneLOC_IND", e)
         }
     }
 
@@ -1185,14 +1209,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             while (true) {
                 try {
                     bytes = inputStream!!.read(buffer)
-                    Log.d(ContentValues.TAG, "Start startListeningForMessages handler : $bytes")
+                    Log.d(dronelogv, "Start startListeningForMessages handler : $bytes")
                     if (bytes > 0) {
                         handler.post(Runnable {receiveREQ(buffer)})
-                        Log.d(ContentValues.TAG, "Start startListeningForMessages handler")
+                        Log.d(dronelogv, "Start startListeningForMessages handler")
                     }
                 } catch (e: IOException) {
                     e.printStackTrace()
-                    Log.e(ContentValues.TAG, "Error reading from Bluetooth", e)
+                    Log.e(dronelogv, "Error reading from Bluetooth", e)
                     break
                 }
             }
@@ -1201,12 +1225,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // AAT REQ 데이터 확인용 함수
     fun receiveREQ(buffer: ByteArray) {
-        Log.d(ContentValues.TAG, "Receive test Drone_Loc_Req from AAT")
         Log.d(ContentValues.TAG, "packet " + bytesToHex(buffer))
-        if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x19.toByte()) {
+        if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1A.toByte()) {
+            Log.d(ContentValues.TAG, "Receive test Drone_Loc_Req from AAT")
             // Parse the AAT_GPS coordinates
-
             // AAT 데이터 파싱
+            AAT_REQ_ID = byteArrayOf(buffer[2],buffer[3],buffer[4],buffer[5])
             val aatLatIntPart = bytesToLong(buffer, 6)
             val aatLatFracPart = bytesToLong(buffer, 10)
             val aatLonIntPart = bytesToLong(buffer, 14)
@@ -1215,8 +1239,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             AATlong = aatLonIntPart + (aatLonFracPart / 1e7) // AAT long 값 파싱 및 변환
             binding.BTGpslatTV.setText(AATlat.toString())
             binding.BTGpslongTV.setText(AATlong.toString())
-
-            Log.d(ContentValues.TAG, "receive AAT GPS lat : " + AATlat + " long : " + AATlong)
+            Log.d(dronelogv, "receive AAT ID: " + bytesToHex(AAT_REQ_ID))
+            Log.d(dronelogv, "receive AAT GPS lat : " + AATlat + " long : " + AATlong)
             //AAT_Latitude = aatLatIntPart + (aatLatFracPart / 1e7)
             //AAT_Longitude = aatLonIntPart + (aatLonFracPart / 1e7)
 
@@ -1228,6 +1252,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
             // AAT 상태값 파싱 및 출력
             val status = buffer[26]
+            val statustest = bytesToHex(buffer,26,2)
+            Log.d(dronelogv, "Receive test Drone_Loc_Req data : " + statustest)
             var statusStr = ""
             when (status) {
                 0x00.toByte() -> statusStr = "OK"
@@ -1239,10 +1265,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             binding.BTaatstatusTV.text = statusStr
 
             //sendDroneLOCIND(dronelat,dronelong,dronealt)
-            Log.d(ContentValues.TAG, "Send Drone_Loc_IND from APP")
+            Log.d(dronelogv, "Send Drone_Loc_Req from APP")
 
-        }else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x06.toByte()){
-            Log.d(ContentValues.TAG, "Send AAT_CMD_IND from APP")
+        } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0A.toByte()){
+
+            Log.d(dronelogv, "AAT_CMD_IND packet " + bytesToHex(buffer))
+            val value = bytesToHex(buffer,10,2)
+            Log.d(dronelogv, "AAT_CMD_IND AAT Status packet " + value)
+            CMD_REQ_SW = false
         }
         else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x05.toByte() && buffer[6] == 0x0B.toByte()) {
             // Handle stop acknowledgment
