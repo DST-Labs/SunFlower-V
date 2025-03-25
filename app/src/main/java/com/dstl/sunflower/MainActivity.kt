@@ -24,7 +24,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
+import android.view.MotionEvent
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isInvisible
 import com.dstl.sunflower.databinding.ActivityMainBinding
 import com.example.connector.bluetooth.ControllerBT
 import com.example.connector.serial.ControllerSerial
@@ -75,6 +78,7 @@ import java.io.OutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.lang.Thread.sleep
+import java.time.LocalDateTime
 import java.util.UUID
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -127,13 +131,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // AAT_CMD_REQ 정의
     private val CMD_Command_SYNC: ByteArray =
-        byteArrayOf(0x00.toByte(), 0x00.toByte()) // AAT ID
+        byteArrayOf(0x00.toByte(), 0x00.toByte()) // STNC
 
     private val CMD_Command_AAT_Reset: ByteArray =
         byteArrayOf(0xA2.toByte(), 0x00.toByte()) // AAT ID
 
-    private val CMD_Command_Init_test: ByteArray =
-        byteArrayOf(0xA1.toByte(), 0x00.toByte()) // AAT ID
+    private val CMD_Command_AAT_Init_test: ByteArray =
+        byteArrayOf(0xA1.toByte(), 0x00.toByte()) // AAT Inti test
+
+    private val CMD_Command_Set_arm_upright: ByteArray =
+        byteArrayOf(0xB1.toByte(), 0x00.toByte()) // AAT Inti test
+
 
 
 
@@ -145,7 +153,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // GPS 관련 변수 선언
     var AATlat = 37.488006 // AAT lat
     var AATlong = 127.008915 // 테스트용 AAT long 더미
-    //var AATalt = 30.0
+    var AATalt = 30.0
     //val Distanceval = 6371e3 // 안테나 트래커 방향 전환용 변수
     val PI = 3.14159265358979323846 // 안테나 트래커 방향 전환용 변수
 
@@ -179,6 +187,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var testag : Int = 0
 
     val dronelogv : String = "Drone Protocol Log"
+
+    private lateinit var magframeLayout: FrameLayout
+    private var initialX = 0f
+    private var initialY = 0f
+    private var initialWidth = 0
+    private var initialHeight = 0
+    private val minSize = 200
 
     // lifecycle
     override fun onStart() {
@@ -248,10 +263,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 )
             }
         }
-        /*binding.rfconnectbt.setOnClickListener {
-            //Toast.makeText(this, "rfconnectbt.setOnClickListener On", Toast.LENGTH_SHORT).show()
-            tryConnectToSerial()
-        }*/
 
         /*
         AAT (Bluetooth) 연결 방법
@@ -259,6 +270,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
          2) 연결하고자 하는 블루투스 항목 선택
          3) Toast 통해 연결 디바이스의 MAC 확인
          */
+
+        binding.btnTeststart.isInvisible = true
+        binding.btnTestReset.isInvisible = true
+        binding.btnTestcancel.isInvisible = true
+
         binding.btconnnectbt.setOnClickListener {
             //Toast.makeText(this, "btconnnectbt.setOnClickListener On", Toast.LENGTH_SHORT).show()
             //listenBT()
@@ -269,58 +285,58 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         /*
         AAT Test 용 Auto Fly 버튼
-
          */
 
-        binding.testSw.setChecked(false)
-        binding.testSw.setOnCheckedChangeListener { CompoundButton, b ->
-            if(b){
-                testOnoff = true
+        binding.autostartBT.setOnClickListener {
+            val testdialog = TestCustomDialog(this, Testdronespeed,Testradius,TestradiusPoint) {
+                spped, circleradius, circlepoint, circlestart, spin, btn ->
+                Testdronespeed = spped
+                Testradius = circleradius
+                TestradiusPoint = circlepoint
+                testag = circlestart
+                testcricleSW = spin
+                val testmessage = Testdronespeed.toString() + " / " + TestradiusPoint.toString()  + " / " + testag.toString() + " / " + testcricleSW.toString()
+                if(btn){
+                    //Toast.makeText(this,testmessage + " / circlebtn", Toast.LENGTH_SHORT).show()
+                    var circlecenter = LatLng(AATlat,AATlong)
+                    generateCirclePoints(circlecenter,Testradius,TestradiusPoint,testcricleSW)
+                    testOnoff = true
+                    binding.btnTeststart.isInvisible = false
+                    binding.btnTestReset.isInvisible = false
+                    binding.btnTestcancel.isInvisible = false
+                }
+                else{
+                    //Toast.makeText(this, testmessage + " / custombtn", Toast.LENGTH_SHORT).show()
+                    testOnoff = true
+                    binding.btnTeststart.isInvisible = false
+                    binding.btnTestReset.isInvisible = false
+                    binding.btnTestcancel.isInvisible = false
+                }
             }
-            else {
-                testOnoff = false
-            }
+            testdialog.show()
+
         }
 
-        binding.autostartBT.setOnClickListener {
-            Testdronespeed = Integer.parseInt(binding.autoflyspeedET.text.toString())
+        binding.btnTeststart.setOnClickListener {
             Autofly()
             testOnoff = false
-            binding.testSw.setChecked(false)
         }
 
-        binding.circleSW.setChecked(true)
-        binding.circleSW.setOnCheckedChangeListener { CompoundButton, b ->
-            if(b){
-                testcricleSW = true
-            }
-            else {
-                testcricleSW = false
-            }
-        }
-
-        binding.autoflycircleBT.setOnClickListener {
-            //Testdronespeed = Integer.parseInt(binding.autoflyspeedET.text.toString())
-            var circlecenter = LatLng(AATlat,AATlong)
-            generateCirclePoints(circlecenter,Testradius,TestradiusPoint,testcricleSW)
-            //showAutoflyInputDialog(this) { input ->
-            //    println("입력된 값: $input")
-            //}
-            //Autofly()
-            //testOnoff = false
-            //binding.testSw.setChecked(false)
-        }
-
-        binding.AutoresetBT.isEnabled = false
-        binding.AutoresetBT.setOnClickListener{
+        binding.btnTestReset.setOnClickListener{
             Autoflyreset()
         }
+        binding.btnTestcancel.setOnClickListener {
+            Autoflyreset()
+            binding.btnTeststart.isInvisible = true
+            binding.btnTestReset.isInvisible = true
+            binding.btnTestcancel.isInvisible = true
+        }
 
-        binding.autoflyspeedET.setText(Testdronespeed.toString())
+        //binding.autoflyspeedET.setText(Testdronespeed.toString())
 
         // AAT 위치를 중앙으로하는 맵 이동
         binding.aatcenterBT.setOnClickListener {
-            if(!CMD_REQ_SW){
+            if(CMD_REQ_SW){
                 sendDroneLOCIND(dronelat,dronelong,dronealt)
             }
             if(!Autoflyis){
@@ -330,9 +346,60 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
 
         binding.aatCmdReqBT.setOnClickListener{
-            sendCMDREQ(CMD_Command_Init_test)
+            val testcmddialog = TestCmdreqDialog(this) {
+                    index ->
+                Toast.makeText(this, " CMDREQ SELETE BTN : " + index.toString(), Toast.LENGTH_SHORT).show()
+                when (index) {
+                    1 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    2 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    3 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    4 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    5 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    6 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    7 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    8 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    9 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                }
+            }
+            testcmddialog.show()
+
+
         }
+
         requestBluetoothPermissions()
+        magframeLayout = findViewById(R.id.frml_massagebox)
+
+        magframeLayout.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 터치 시작 지점과 초기 크기 저장
+                    initialX = event.rawX
+                    initialY = event.rawY
+                    initialWidth = view.width
+                    initialHeight = view.height
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    // 터치 이동 거리 계산
+                    val dx = initialX - event.rawX
+                    val dy = initialY - event.rawY
+
+                    // 새로운 크기 설정 (너무 작아지지 않도록 최소 크기 지정)
+                    val newWidth = (initialWidth + dx).toInt().coerceAtLeast(100)
+                    val newHeight = (initialHeight + dy).toInt().coerceAtLeast(100)
+
+                    // 레이아웃 크기 변경
+                    val layoutParams = view.layoutParams
+                    layoutParams.width = newWidth
+                    layoutParams.height = newHeight
+                    view.layoutParams = layoutParams
+                }
+            }
+            true
+
+        }
+
+
+
 
         // google Map 선언
         val requestPermissionLauncher = registerForActivityResult(
@@ -538,7 +605,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         )
         autoflystatusUpdateTask = Runnable {autoflymatker()}
         autoflyhandler.post(autoflystatusUpdateTask!!)
-        binding.AutoresetBT.isEnabled=true
     }
 
     private fun Autoflyreset() {
@@ -546,8 +612,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         markerList.clear()
         Autoflyis = false
         automarkerList.clear()
-        autoflyhandler.removeCallbacks(autoflystatusUpdateTask!!)
-        binding.AutoresetBT.isEnabled=false
+        if(autoflystatusUpdateTask != null){
+            autoflyhandler.removeCallbacks(autoflystatusUpdateTask!!)
+        }
         CountSendDroneLOC_IND = 0
         CountSendDroneLOC_gps = 0
     }
@@ -567,9 +634,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                             dronelat = latLng.latitude
                             dronelong = latLng.longitude
                             dronealt = 350.0
-                            binding.RFGpslatTV.text = "latitude : $dronelat"
-                            binding.RFGpslongTV.text = "longitude : $dronelong"
-                            binding.RFGpsaltTV.text = "altitude : $dronealt"
+                            updatedroneLogview(dronelat.toString(),dronelong.toString(),dronealt.toString())
                             movemarker(latLng.latitude, latLng.longitude, AATlat, AATlong)
                             if(!CMD_REQ_SW){
                                 sendDroneLOCIND(dronelat,dronelong,dronealt)
@@ -940,14 +1005,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 dronelat = gpsMessage.lat() / 1E7 // Lat 값
                 dronelong = gpsMessage.lon() / 1E7 // Long 값
                 dronealt = gpsMessage.alt() / 1E3// Alt 값
-                binding.RFGpslatTV.text = "latitude : $dronelat"
-                binding.RFGpslongTV.text = "longitude : $dronelong"
-                binding.RFGpsaltTV.text = "altitude : $dronealt"
-/*                if (bluetoothSocket?.isConnected == true){
-                    //sendDroneLOCIND(lat,long,alt)
-                }*/
+                updatedroneLogview(dronelat.toString(),dronelong.toString(),dronealt.toString())
+                if (bluetoothSocket?.isConnected == true){
+                    sendDroneLOCIND(dronelat,dronelong,dronealt)
+                }
                 //googleMap?.clear()
-                movemarker(dronelat,dronelong,AATlat,AATlong)
+                //movemarker(dronelat,dronelong,AATlat,AATlong)
             }
         }
     }
@@ -1081,6 +1144,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // AAT 전달용 StartREQ protocol 전달
         try {
             outputStream!!.write(startREQ)
+            updateLogView("sendStartREQ",bytesToHex(startREQ))
             Log.d(dronelogv, "Sent StartREQ - " + bytesToHex(startREQ))
         } catch (e: IOException) {
             Log.e(dronelogv, "Error sending StartREQ", e)
@@ -1103,6 +1167,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // StopREQ protocol 전달
         try {
             outputStream!!.write(stopREQ)
+            updateLogView("sendStopREQ",bytesToHex(stopREQ))
             Log.d(dronelogv, "Sent StopREQ - " + bytesToHex(stopREQ))
         } catch (e: IOException) {
             Log.e(dronelogv, "Error sending StopREQ", e)
@@ -1125,6 +1190,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // sendCMDREQ protocol 전달
         try {
             outputStream!!.write(CMDREQ)
+            updateLogView("sendCMDREQ",bytesToHex(CMDREQ))
             Log.d(dronelogv, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
             CMD_REQ_SW = true
         } catch (e: IOException) {
@@ -1189,6 +1255,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // AAT 전달용 DroneLOCIND protocol 전달
         try {
             outputStream!!.write(gpsData)
+            updateLogView("sendDroneLOCIND",bytesToHex(gpsData))
             ++CountSendDroneLOC_IND
             Log.d(
                 dronelogv,
@@ -1226,6 +1293,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // AAT REQ 데이터 확인용 함수
     fun receiveREQ(buffer: ByteArray) {
         Log.d(ContentValues.TAG, "packet " + bytesToHex(buffer))
+        val endIndex = buffer.indexOf(0x55.toByte())
+        val slicebuffer = if (endIndex != -1 && buffer[endIndex-1] == 0x00.toByte()) buffer.copyOfRange(0,endIndex) else buffer
+        updateLogView("receiveREQ",bytesToHex(slicebuffer))
         if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1A.toByte()) {
             Log.d(ContentValues.TAG, "Receive test Drone_Loc_Req from AAT")
             // Parse the AAT_GPS coordinates
@@ -1237,8 +1307,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             val aatLonFracPart = bytesToLong(buffer, 18)
             AATlat = aatLatIntPart + (aatLatFracPart / 1e7) // AAT lat 값 파싱 및 변환
             AATlong = aatLonIntPart + (aatLonFracPart / 1e7) // AAT long 값 파싱 및 변환
-            binding.BTGpslatTV.setText(AATlat.toString())
-            binding.BTGpslongTV.setText(AATlong.toString())
+            //AATlat = bytesToFloat(buffer, 22)
+            updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString())
             Log.d(dronelogv, "receive AAT ID: " + bytesToHex(AAT_REQ_ID))
             Log.d(dronelogv, "receive AAT GPS lat : " + AATlat + " long : " + AATlong)
             //AAT_Latitude = aatLatIntPart + (aatLatFracPart / 1e7)
@@ -1262,7 +1332,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 0xCC.toByte() -> statusStr = "Lost target"
                 0xDB.toByte() -> statusStr = "AAT Battery Low"
             }
-            binding.BTaatstatusTV.text = statusStr
+            //updateLogView(statusStr)
 
             //sendDroneLOCIND(dronelat,dronelong,dronealt)
             Log.d(dronelogv, "Send Drone_Loc_Req from APP")
@@ -1351,5 +1421,27 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             e.printStackTrace()
             Log.e(ContentValues.TAG, "Error stopping communication", e)
         }
+    }
+    // Messagebox
+    private fun updateLogView(send: String , message: String) {
+        CoroutineScope(Dispatchers.Main).launch {
+            val localDataTime : LocalDateTime = LocalDateTime.now()
+            binding.tvLog.text = "${binding.tvLog.text}$localDataTime : [$send] - $message\n"
+
+        }
+    }
+
+    private fun updatedroneLogview(lat : String, long : String, alt : String) {
+        binding.tvMasboxDronelat.text = "lat : " + String.format("%.7f", lat.toDouble())
+        binding.tvMasboxDronelong.text = "lon : " + String.format("%.7f",long.toDouble())
+        binding.tvMasboxDronealt.text = "alt : " + String.format("%.1f",alt.toDouble())
+
+    }
+
+    private fun updateaatLogview(lat : String, long : String, alt : String) {
+        binding.tvMasboxAatllat.text = "lat : " + lat
+        binding.tvMasboxAatlong.text = "lon : " + long
+        binding.tvMasboxAatalt.text = "alt : " + alt
+
     }
 }
