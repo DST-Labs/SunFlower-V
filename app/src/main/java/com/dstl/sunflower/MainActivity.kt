@@ -181,6 +181,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var testag : Int = 0 // 원형 비행 시작 포인트 지정
     var testcricleSW : Boolean = true // 원형 비행의 시계 반시계 방행 선택 true : 시계방향 / fales : 반시계 방향
     var CMD_REQ_SW : Boolean = false // CMD REQ 프로토콜 실행 유무
+    var BT_connect_Set : Boolean = false // Bluetooth 연결 상태 확인
+    var RF_connect_Set : Boolean = false // USB 연결 상태 확인
 
     private var dronepolyline: Polyline? = null // markerList 간 라인 설정
 
@@ -314,16 +316,19 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         binding.btnTeststart.setOnClickListener {
             Autofly()
             testOnoff = false
+            binding.btnTeststart.isEnabled = false
         }
 
         // 비행 시뮬레이터 초기화 버튼
         binding.btnTestReset.setOnClickListener{
             Autoflyreset()
+            binding.btnTeststart.isEnabled = true
         }
 
         // 비행 시뮬레이터 종료 버튼
         binding.btnTestcancel.setOnClickListener {
             Autoflyreset()
+            binding.btnTeststart.isEnabled = true
             binding.btnTeststart.isInvisible = true
             binding.btnTestReset.isInvisible = true
             binding.btnTestcancel.isInvisible = true
@@ -331,7 +336,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         // AAT 위치를 중앙으로하는 맵 이동
         binding.aatcenterBT.setOnClickListener {
-            if(CMD_REQ_SW){
+            if(BT_connect_Set){
                 sendDroneLOCIND(dronelat,dronelong,dronealt)
             }
             if(!Autoflyis){
@@ -346,15 +351,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     index ->
                 Toast.makeText(this, " CMDREQ SELETE BTN : " + index.toString(), Toast.LENGTH_SHORT).show()
                 when (index) {
-                    1 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    2 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    3 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    4 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    5 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    6 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    7 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    8 -> sendCMDREQ(CMD_Command_AAT_Init_test)
-                    9 -> sendCMDREQ(CMD_Command_AAT_Init_test)
+                    1 -> sendCMDREQ("TEST01",CMD_Command_AAT_Init_test)
+                    2 -> sendCMDREQ("TEST02",CMD_Command_AAT_Init_test)
+                    3 -> sendCMDREQ("TEST03",CMD_Command_AAT_Init_test)
+                    4 -> sendCMDREQ("TEST04",CMD_Command_AAT_Init_test)
+                    5 -> sendCMDREQ("TEST05",CMD_Command_AAT_Init_test)
+                    6 -> sendCMDREQ("TEST06",CMD_Command_AAT_Init_test)
+                    7 -> sendCMDREQ("TEST07",CMD_Command_AAT_Init_test)
+                    8 -> sendCMDREQ("TEST08",CMD_Command_AAT_Init_test)
+                    9 -> sendCMDREQ("TEST09",CMD_Command_AAT_Init_test)
                 }
             }
             testcmddialog.show()
@@ -584,7 +589,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 automarkerList.add(startpoint!!)
             }
             else {
-
                 endpoint = LatLng(marker.position.latitude, marker.position.longitude)
                 val pointnum = calculatepointnum(getDistanceMeterBetweenTwoLatLngCoordinate(startpoint!!,endpoint!!).toInt(),Testdronespeed)
                 interpolatePoints(startpoint!!,endpoint!!,pointnum)
@@ -632,12 +636,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                             dronealt = 350.0
                             updatedroneLogview(dronelat.toString(),dronelong.toString(),dronealt.toString())
                             movemarker(latLng.latitude, latLng.longitude, AATlat, AATlong)
-                            if(!CMD_REQ_SW){
+                            if(BT_connect_Set && !CMD_REQ_SW){
                                 sendDroneLOCIND(dronelat,dronelong,dronealt)
                             }
                             if(index == automarkerList.size - 1){
                                 CountSendDroneLOC_IND = 0
                                 CountSendDroneLOC_gps = 0
+                                binding.btnTeststart.isEnabled = true
                             }
                         }
                     }
@@ -894,9 +899,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             if (serialDevice != null) {
                 if (serialDevice.open()) { // 시리얼 포트 오픈
                     serialDevice.setBaudRate(USBBaudrate) // 보레이트 설정
+                    RF_connect_Set = true
                     try {
                         val pipedOut = PipedOutputStream()
                         val pipedIn = PipedInputStream(pipedOut) // pip 선언
+
+
 
                         serialDevice.read { data: ByteArray? ->
                             try {
@@ -905,6 +913,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                                 e.printStackTrace()
                             }
                         }
+
 
                         val mavlinkConnection =
                             MavlinkConnection.create(pipedIn, UsbSerialOutputStream(serialDevice)) // Mavlink 선언
@@ -1071,6 +1080,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             inputStream = bluetoothSocket!!.inputStream
 
             // 데이터 송수신 함수 호출
+            BT_connect_Set = true
             sendStartREQ()
             startListeningForMessages()
             //startReceivingData(controllerBT)
@@ -1129,7 +1139,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // AAT StopREQ 전달 문
     @Throws(IOException::class)
-    private fun sendCMDREQ(Command : ByteArray) {
+    private fun sendCMDREQ(SendCMDREQ_MSG : String , Command : ByteArray) {
         // AAT 전달용 sendCMDREQ 생성
         val CMDREQ = ByteArray(10)
         CMDREQ[0] = 0xAA.toByte() // STX
@@ -1142,7 +1152,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // sendCMDREQ protocol 전달
         try {
             outputStream!!.write(CMDREQ)
-            updateLogView("sendCMDREQ",bytesToHex(CMDREQ))
+            updateLogView("sendCMDREQ_"+SendCMDREQ_MSG,bytesToHex(CMDREQ))
             Log.d(dronelogv, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
             CMD_REQ_SW = true
         } catch (e: IOException) {
@@ -1366,6 +1376,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         try {
             if (bluetoothSocket != null) {
                 sendStopREQ()
+                BT_connect_Set = false
                 bluetoothSocket!!.close()
             }
             handler.removeCallbacks(autoflystatusUpdateTask!!)

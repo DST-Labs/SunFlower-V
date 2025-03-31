@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center"
-    android:minWidth="315dp"
+    android:minWidth="215dp"
     android:orientation="vertical">
 
     <TextView
@@ -34,9 +34,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
             android:ems="10"
+            android:gravity="center"
             android:inputType="number" />
+
     </LinearLayout>
 
     <LinearLayout
@@ -57,8 +58,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
             android:ems="10"
+            android:gravity="center"
             android:inputType="number" />
     </LinearLayout>
 
@@ -80,8 +81,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
             android:ems="10"
+            android:gravity="center"
             android:inputType="number" />
     </LinearLayout>
 
@@ -107,6 +108,7 @@
             android:gravity="center"
             android:inputType="number" />
     </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -124,15 +126,14 @@
             android:id="@+id/circle_cwccw_sw"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:gravity="center" />
 
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_weight="1"
         android:orientation="horizontal">
 
         <Button
