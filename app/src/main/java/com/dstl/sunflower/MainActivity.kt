@@ -120,9 +120,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // AAT 통신 변수 선언
     private val App_ID: ByteArray =
-        byteArrayOf(0xAA.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // AAT ID
+        byteArrayOf(0xA0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // AAT ID
     private val AAT_ID: ByteArray =
-        byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // APP ID
+        byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // APP ID
     private var AAT_REQ_ID: ByteArray =
         byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // AAP REQ ID
 
@@ -351,8 +351,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     index ->
                 Toast.makeText(this, " CMDREQ SELETE BTN : " + index.toString(), Toast.LENGTH_SHORT).show()
                 when (index) {
-                    1 -> sendCMDREQ("TEST01",CMD_Command_AAT_Init_test)
-                    2 -> sendCMDREQ("TEST02",CMD_Command_AAT_Init_test)
+                    1 -> sendCMDREQ("SYNC",CMD_Command_SYNC)
+                    2 -> sendCMDREQ("AAT_Init",CMD_Command_AAT_Init_test)
                     3 -> sendCMDREQ("TEST03",CMD_Command_AAT_Init_test)
                     4 -> sendCMDREQ("TEST04",CMD_Command_AAT_Init_test)
                     5 -> sendCMDREQ("TEST05",CMD_Command_AAT_Init_test)
@@ -1121,7 +1121,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val stopREQ = ByteArray(9)
         stopREQ[0] = 0xAA.toByte() // STX
         stopREQ[1] = 0x05.toByte() // LEN
-        memcpy(stopREQ, 2, App_ID, 0, 4) // App_ID
+        memcpy(stopREQ, 2, AAT_ID, 0, 4) // App_ID
         stopREQ[6] = 0x0A.toByte() // Request
         stopREQ[7] = 0xFF.toByte() // Checksum
         stopREQ[8] = 0x55.toByte() // ETX
@@ -1144,7 +1144,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val CMDREQ = ByteArray(10)
         CMDREQ[0] = 0xAA.toByte() // STX
         CMDREQ[1] = 0x06.toByte() // LEN
-        memcpy(CMDREQ, 2, AAT_REQ_ID, 0, 4) // App_ID
+        memcpy(CMDREQ, 2, AAT_ID, 0, 4) // App_ID
         memcpy(CMDREQ, 6, Command, 0, 2) // AAT_ID
         CMDREQ[8] = 0xFF.toByte() // Checksum
         CMDREQ[9] = 0x55.toByte() // ETX
