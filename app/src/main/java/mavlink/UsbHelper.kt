@@ -50,11 +50,11 @@ class UsbHelper (private var activity: Activity, usbPermissionReceiver: Broadcas
                 activity!!
             )
             builder.setTitle("장치 선택")
+
             builder.setItems(deviceNames) { dialog: DialogInterface?, which: Int ->
                 val selectedDevice = deviceList[which]
                 val filter = IntentFilter(ACTION_USB_PERMISSION)
                 val explicitIntent: Intent = Intent(ACTION_USB_PERMISSION)
-
                 explicitIntent.setPackage(activity.getPackageName());
                 // BroadcastReceiver 등록
 
@@ -81,7 +81,6 @@ class UsbHelper (private var activity: Activity, usbPermissionReceiver: Broadcas
                         ContextCompat.RECEIVER_EXPORTED
                     )
                 }
-
                 usbManager!!.requestPermission(selectedDevice, permissionIntent)
             }
             builder.show()

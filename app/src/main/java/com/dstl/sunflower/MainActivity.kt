@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private val AAT_ID: ByteArray =
         byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // APP ID
     private var AAT_REQ_ID: ByteArray =
-        byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // AAP REQ ID
+        byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // AAP REQ ID
 
     // AAT_CMD_REQ 정의
     private val CMD_Command_SYNC: ByteArray =
@@ -970,8 +970,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 if (bluetoothSocket?.isConnected == true){
                     sendDroneLOCIND(dronelat,dronelong,dronealt)
                 }
-                //googleMap?.clear()
-                //movemarker(dronelat,dronelong,AATlat,AATlong)
+                movemarker(dronelat,dronelong,AATlat,AATlong)
             }
         }
     }
@@ -1081,7 +1080,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
             // 데이터 송수신 함수 호출
             BT_connect_Set = true
-            sendStartREQ()
+            //sendStartREQ()
             startListeningForMessages()
             //startReceivingData(controllerBT)
 
@@ -1256,10 +1255,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     fun receiveREQ(buffer: ByteArray) {
         Log.d(ContentValues.TAG, "packet " + bytesToHex(buffer))
         val endIndex = buffer.indexOf(0x55.toByte())
-        val slicebuffer = if (endIndex != -1 && buffer[endIndex-1] == 0x00.toByte()) buffer.copyOfRange(0,endIndex) else buffer
-        updateLogView("receiveREQ",bytesToHex(slicebuffer))
-
-        if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1A.toByte()) {
+        val slicebuffer = if (endIndex != -1 && buffer[endIndex-1] == 0x00.toByte()) buffer.copyOfRange(0,endIndex+1) else buffer
+        if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x08.toByte() && buffer[10] == 0x00.toByte()) { //AAT_Ready_Brdcst
+            Log.d(ContentValues.TAG, "Receive AAT_Ready_Brdcst from AAT")
+            sendStartREQ()
+            updateLogView("receive AAT_Ready_Brdcst",bytesToHex(slicebuffer))
+        } else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1D.toByte()) { // Drone_LOC_REQ
             Log.d(ContentValues.TAG, "Receive test Drone_Loc_Req from AAT")
             // Parse the AAT_GPS coordinates
             // AAT 데이터 파싱
@@ -1270,10 +1271,43 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             val aatLonFracPart = bytesToLong(buffer, 18)
             AATlat = aatLatIntPart + (aatLatFracPart / 1e7) // AAT lat 값 파싱 및 변환
             AATlong = aatLonIntPart + (aatLonFracPart / 1e7) // AAT long 값 파싱 및 변환
+            val yaw_byteArray = byteArrayOf(buffer[26], buffer[27])
+            val intyawValue = bytesToShort(yaw_byteArray)
+            val tilt_byteArray = byteArrayOf(buffer[28], buffer[29])
+            val inttiltValue = bytesToShort(tilt_byteArray)
             //AATlat = bytesToFloat(buffer, 22)
-            updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString())
-            Log.d(dronelogv, "receive AAT ID: " + bytesToHex(AAT_REQ_ID))
-            Log.d(dronelogv, "receive AAT GPS lat : " + AATlat + " long : " + AATlong)
+
+            val status = buffer[30]
+            //val statustest = bytesToHex(buffer,26,2)
+            //Log.d(dronelogv, "Receive test Drone_Loc_Req data : " + statustest)
+            var statusStr = ""
+            when (status) {
+                0x00.toByte() -> statusStr = "AAT OK"
+                //0xAx : AAT not ready
+                0xA0.toByte() -> statusStr = "AAT is under resetting"
+                0xA1.toByte() -> statusStr = "Compass Calibration goes on"
+                0xA2.toByte() -> statusStr = "GPS is under searching SATs"
+                0xA3.toByte() -> statusStr = "YAW & TILT is initializing"
+                //0xBx : Battery status
+                //0xB.toByte() -> statusStr = "GPS inactive"
+                //0xCx : AAT action failed
+                0xC0.toByte() -> statusStr = "unknown AAT problem"
+                0xC1.toByte() -> statusStr = "Compass calibration failed"
+                0xC2.toByte() -> statusStr = "GPS failed, default position set"
+                0xC3.toByte() -> statusStr = "TILT sensor run over 90°"
+                //0xDx : Target problem
+                0xD0.toByte() -> statusStr = "target available"
+                0xD1.toByte() -> statusStr = "target GPS not available"
+                0xD2.toByte() -> statusStr = "target antenna tracking unavailable"
+            }
+
+            updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),inttiltValue.toString(),statusStr)
+            //Log.d(dronelogv, "receiveREQ AAT ID: " + bytesToHex(AAT_REQ_ID))
+            //Log.d(dronelogv, "receiveREQ AAT GPS lat : " + AATlat + " long : " + AATlong)
+            //Log.d(dronelogv, "receiveREQ AAT yaw : " + intyawValue + " tilt : " + inttiltValue)
+
+            updateLogView("receive Drone_LOC_REQ",bytesToHex(slicebuffer))
+
             //AAT_Latitude = aatLatIntPart + (aatLatFracPart / 1e7)
             //AAT_Longitude = aatLonIntPart + (aatLonFracPart / 1e7)
 
@@ -1284,32 +1318,22 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             //AAT_Altitude = bytesToFloat(buffer, 22)
 
             // AAT 상태값 파싱 및 출력
-            val status = buffer[26]
-            val statustest = bytesToHex(buffer,26,2)
-            Log.d(dronelogv, "Receive test Drone_Loc_Req data : " + statustest)
-            var statusStr = ""
-            when (status) {
-                0x00.toByte() -> statusStr = "OK"
-                0xAA.toByte() -> statusStr = "AAT not ready"
-                0xBB.toByte() -> statusStr = "GPS inactive"
-                0xCC.toByte() -> statusStr = "Lost target"
-                0xDB.toByte() -> statusStr = "AAT Battery Low"
-            }
-            //updateLogView(statusStr)
 
             //sendDroneLOCIND(dronelat,dronelong,dronealt)
             Log.d(dronelogv, "Send Drone_Loc_Req from APP")
 
-        } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0A.toByte()){
+        } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0A.toByte()){ // AAT_CMD_IND
 
             Log.d(dronelogv, "AAT_CMD_IND packet " + bytesToHex(buffer))
             val value = bytesToHex(buffer,10,2)
             Log.d(dronelogv, "AAT_CMD_IND AAT Status packet " + value)
             CMD_REQ_SW = false
+            updateLogView("receive AAT_CMD_IND",bytesToHex(slicebuffer))
         }
-        else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x05.toByte() && buffer[6] == 0x0B.toByte()) {
+        else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x05.toByte() && buffer[6] == 0x0B.toByte()) { // STOP_ACK
             // Handle stop acknowledgment
             stopCommunication()
+            updateLogView("receive STOP_ACK",bytesToHex(slicebuffer))
         }
     }
 
@@ -1372,6 +1396,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return value
     }
 
+    private fun bytesToShort(bytes: ByteArray): Short {
+        return ((bytes[1].toInt() shl 8) or (bytes[0].toInt() and 0xFF)).toShort()
+    }
     private fun stopCommunication() {
         try {
             if (bluetoothSocket != null) {
@@ -1391,7 +1418,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         CoroutineScope(Dispatchers.Main).launch {
             val localDataTime : LocalDateTime = LocalDateTime.now()
             binding.tvLog.text = "${binding.tvLog.text}$localDataTime : [$send] - $message\n"
-
         }
     }
 
@@ -1404,10 +1430,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // 로그 화면 AAT 좌표값 업데이트
-    private fun updateaatLogview(lat : String, long : String, alt : String) {
+    private fun updateaatLogview(lat : String, long : String, alt : String, yaw : String, tilt : String, status : String) {
         binding.tvMasboxAatllat.text = "lat : " + lat
         binding.tvMasboxAatlong.text = "lon : " + long
         binding.tvMasboxAatalt.text = "alt : " + alt
-
+        binding.tvMasboxAatyaw.text = "yaw : " + yaw
+        binding.tvMasboxAattilt.text = "tilt : " + tilt
+        binding.tvMasboxAatstatus.text = "status : " + status
     }
 }
