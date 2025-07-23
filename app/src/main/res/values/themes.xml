@@ -1,8 +1,18 @@
 <resources>
     <!-- Base application theme. -->
     <style name="Base.Theme.SunFlower" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <!-- 고정 색상 지정 -->
+        <item name="colorPrimary">@color/my_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <item name="colorSecondary">@color/my_secondary</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="colorSurface">@color/my_background</item>
+        <item name="colorOnSurface">@color/black</item>
+
+        <!-- 시스템 다크 테마에 영향 받지 않기 -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <style name="Theme.SunFlower" parent="Base.Theme.SunFlower" />

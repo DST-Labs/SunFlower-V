@@ -16,38 +16,30 @@
             android:name="com.google.android.gms.maps.SupportMapFragment"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="12dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <Button
-            android:id="@+id/rfconnectbt"
+        <TextView
+            android:id="@+id/popup1"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="RFconnect"
-            app:layout_constraintEnd_toEndOf="@+id/btconnnectbt"
-            app:layout_constraintTop_toBottomOf="@+id/btconnnectbt" />
+            android:background="@drawable/popup_background"
+            android:text="마커 1 정보"
+            android:textColor="#000000"
+            android:padding="8dp"
+            android:visibility="gone" />
 
-        <Button
-            android:id="@+id/btconnnectbt"
+        <TextView
+            android:id="@+id/popup2"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:layout_marginEnd="10dp"
-            android:text="BTconnect"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@+id/mapView" />
+            android:background="@drawable/popup_background"
+            android:text="마커 2 정보"
+            android:textColor="#000000"
+            android:padding="8dp"
+            android:visibility="gone" />
 
-        <Button
-            android:id="@+id/aatcenterBT"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginBottom="10dp"
-            android:text="AATCenter"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="@+id/mapView" />
 
         <Button
             android:id="@+id/autostartBT"
@@ -65,7 +57,7 @@
             android:layout_height="wrap_content"
             android:text="AAT_CMD_REQ"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="@+id/btconnnectbt"
+            app:layout_constraintEnd_toEndOf="@+id/mapView"
             app:layout_constraintTop_toTopOf="@+id/mapView" />
 
         <Button
@@ -98,6 +90,47 @@
             app:layout_constraintBottom_toBottomOf="@+id/mapView"
             app:layout_constraintStart_toEndOf="@+id/btn_TestReset" />
 
+        <ImageButton
+            android:id="@+id/btn_aat_con_status"
+            android:layout_width="90dp"
+            android:layout_height="90dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginEnd="5dp"
+            android:adjustViewBounds="true"
+            android:background="#00FFFFFF"
+            android:padding="15dp"
+            android:scaleType="centerCrop"
+            app:layout_constraintEnd_toStartOf="@+id/btn_drone_con_status"
+            app:layout_constraintTop_toTopOf="@+id/mapView"
+            app:srcCompat="@drawable/img_aat_red"
+            tools:ignore="SpeakableTextPresentCheck,SpeakableTextPresentCheck" />
+
+        <ImageButton
+            android:id="@+id/btn_drone_con_status"
+            android:layout_width="90dp"
+            android:layout_height="90dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginEnd="5dp"
+            android:adjustViewBounds="true"
+            android:background="#00FFFFFF"
+            android:padding="15dp"
+            android:scaleType="centerCrop"
+            app:layout_constraintEnd_toEndOf="@+id/mapView"
+            app:layout_constraintTop_toTopOf="@+id/mapView"
+            app:srcCompat="@drawable/img_drone_red"
+            tools:ignore="SpeakableTextPresentCheck" />
+
+        <ImageView
+            android:id="@+id/btn_logo"
+            android:layout_width="173dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="15dp"
+            android:layout_marginTop="15dp"
+            android:background="#00FFFFFF"
+            app:layout_constraintStart_toStartOf="@+id/mapView"
+            app:layout_constraintTop_toTopOf="@+id/mapView"
+            app:srcCompat="@drawable/main_logo" />
+
         <FrameLayout
             android:id="@+id/frml_massagebox"
             android:layout_width="430dp"
@@ -110,7 +143,7 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:orientation="vertical">
 
                 <LinearLayout
@@ -124,30 +157,36 @@
                         android:layout_height="35dp"
                         android:layout_weight="1"
                         android:padding="5dp"
-                        app:srcCompat="@drawable/anternna_header" />
+                        app:srcCompat="@drawable/img_aat_org" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aatllat"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aatlong"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aatalt"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                 </LinearLayout>
@@ -163,30 +202,36 @@
                         android:layout_height="35dp"
                         android:layout_weight="1"
                         android:padding="5dp"
-                        app:srcCompat="@drawable/anternna_header" />
+                        app:srcCompat="@drawable/img_aat_org" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aatyaw"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aattilt"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_aatstatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
                 </LinearLayout>
 
@@ -201,50 +246,54 @@
                         android:layout_height="35dp"
                         android:layout_weight="1"
                         android:padding="5dp"
-                        app:srcCompat="@drawable/drone" />
+                        app:srcCompat="@drawable/img_drone_org" />
 
                     <TextView
                         android:id="@+id/tv_masbox_dronelat"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_dronelong"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                     <TextView
                         android:id="@+id/tv_masbox_dronealt"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
+                        android:gravity="center_vertical"
                         android:padding="5dp"
+                        android:textColor="#000000"
                         android:text="TextView" />
 
                 </LinearLayout>
 
                 <ScrollView
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1">
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:fillViewport="true">
 
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/tv_Log"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:id="@+id/tv_Log"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:scrollbars="vertical" />
-                    </LinearLayout>
+                        android:layout_height="wrap_content"
+                        android:padding="4dp"
+                        android:textColor="#000000"
+                        android:textSize="12sp"
+                        android:scrollbars="vertical" />
                 </ScrollView>
 
 

@@ -19,19 +19,25 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.location.Location
 import android.os.Build
+import android.os.Build.VERSION
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.util.TypedValue
 import android.view.MotionEvent
+import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.Composable
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
@@ -72,13 +78,18 @@ import kotlinx.coroutines.launch
 import mavlink.MavlinkDataProcessor
 import mavlink.UsbHelper
 import mavlink.UsbSerialOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.lang.Thread.sleep
+import java.text.SimpleDateFormat
 import java.time.LocalDateTime
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -104,6 +115,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private val USBBaudrate = 57600 // USB 텔레메트리 통신 속도
     private var mavlinkDataProcessor : MavlinkDataProcessor? = null // Mavlink 데이터 프로세스 (통신 프로토콜 라이브러리)
 
+    private var btn_usb_status = 0
+
 
     // Bluetooth 선언
 
@@ -118,14 +131,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     private var handler = Handler(Looper.getMainLooper()) // 블루투스 메세지용 핸들러
 
+    private var btn_bt_status = 0
+
     // AAT 통신 변수 선언
     private val App_ID: ByteArray =
         byteArrayOf(0xA0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte()) // AAT ID
-    private val AAT_ID: ByteArray =
+    private var AAT_ID: ByteArray =
         byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // APP ID
-    private var AAT_REQ_ID: ByteArray =
-        byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // AAP REQ ID
-
     // AAT_CMD_REQ 정의
     private val CMD_Command_SYNC: ByteArray =
         byteArrayOf(0x00.toByte(), 0x00.toByte()) // STNC
@@ -140,20 +152,19 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         byteArrayOf(0xB1.toByte(), 0x00.toByte()) // Set_arm_upright
 
 
-
-
-
-
     // map 변수 선언
 
     lateinit var providerClient: FusedLocationProviderClient
     lateinit var apiClient: GoogleApiClient
     var googleMap: GoogleMap? = null
+    var custommapzoom : Float = 15f
+    var custommapzoom_scale : Float = 1.0f
 
     // GPS 관련 변수 선언
     var AATlat = 37.488006 // AAT lat
     var AATlong = 127.008915 // AAT long
     var AATalt = 30.0 // AAT alt
+    var AATYaw = 0.0
 
     val PI = 3.14159265358979323846 // 안테나 트래커 방향 전환용 변수
 
@@ -178,13 +189,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private var Testdronespeed : Int = 100 // 비행 속도 설정 단위 :  m/s
     private var Testradius : Double = 1500.0 // 비행 원형 반지름
     private var TestradiusPoint :Int = 12 // 비행 포인트 개수 12
+    var TestAppalt : Double = 100.0
     var testag : Int = 0 // 원형 비행 시작 포인트 지정
     var testcricleSW : Boolean = true // 원형 비행의 시계 반시계 방행 선택 true : 시계방향 / fales : 반시계 방향
     var CMD_REQ_SW : Boolean = false // CMD REQ 프로토콜 실행 유무
+    var testinfinity : Boolean = true
     var BT_connect_Set : Boolean = false // Bluetooth 연결 상태 확인
     var RF_connect_Set : Boolean = false // USB 연결 상태 확인
 
     private var dronepolyline: Polyline? = null // markerList 간 라인 설정
+    private var aatpolyline: Polyline? = null
 
     var CountSendDroneLOC_IND : Int = 0 // 비행 시뮬레이터 개수 확인용 변수 > 마커 개수
     var CountSendDroneLOC_gps : Int = 0 // 비행 시뮬레이터 개수 확인용 변수 > GPS 개수
@@ -197,6 +211,39 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private var initialY = 0f // 로그창 화면절대 좌표 Y
     private var initialWidth = 0 // 로그창 화면 넓이
     private var initialHeight = 0 // 로그창 화면 깊이
+
+    // Map 센터 이동 관련 변수
+
+    var aat_center_is = false
+    var drone_center_is = false
+
+    // tester 모드 활성화
+    var testercount = 0
+    var testermodeon = false
+
+    // marker
+
+    private lateinit var popup1: TextView
+    private lateinit var popup2: TextView
+    private var isFirstMapMove = true
+
+    // V&V test
+    var drone_data_true_count = 0
+    var drone_data_fail_count = 0
+    var aat_data_true_count = 0
+    var aat_data_fail_count = 0
+
+    var aat_IND_time : Long = 0
+    var aat_REQ_time : Long = 0
+
+    private val PREFS_NAME = "AppPrefs"
+    private val KEY_RUN_COUNT = "run_count"
+
+    private lateinit var fileToWrite: File
+    private var isFilePrepared = false
+    private val REQUEST_CODE = 100
+
+    val Logchange = false // 0 : normal , 1 : V&V
 
     // lifecycle
     override fun onStart() {
@@ -239,6 +286,23 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         usbManager = getSystemService(USB_SERVICE) as UsbManager
         usbHelper = UsbHelper(this, usbPermissionReceiver)
 
+        // 로그 저장
+
+        //prepareFile()
+
+        // 권한 요청 (Android 6 이상)
+/*        if (VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                REQUEST_CODE
+            )
+        } else {
+
+        }*/
+
         // 버튼 이벤트
 
         /*
@@ -250,13 +314,40 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         // RF USB 실행및 활성화
 
-        binding.rfconnectbt.setOnClickListener {
+/*        binding.rfconnectbt.setOnClickListener {
             usbHelper!!.showUsbDeviceList { device: UsbDevice? ->
                 this.onDeviceSelected(
                     device!!
                 )
             }
+        }*/
+
+        binding.btnDroneConStatus.setOnClickListener{
+            if(btn_usb_status == 0) {
+                usbHelper!!.showUsbDeviceList { device: UsbDevice? ->
+                    this.onDeviceSelected(
+                        device!!
+                    )
+                }
+            }
+            else if(btn_usb_status == 1) {
+
+            }
+            else if(btn_usb_status == 2) {
+                if(drone_center_is) {
+                    binding.btnDroneConStatus.background = null
+                    //marker_center_map(aat_center_is,drone_center_is)
+                }
+                else {
+                    binding.btnDroneConStatus.background = ContextCompat.getDrawable(this, R.drawable.circle_border)
+                    binding.btnAatConStatus.background = null
+                    aat_center_is = false
+                    //marker_center_map(aat_center_is,drone_center_is)
+                }
+                drone_center_is = !drone_center_is
+            }
         }
+
 
         /*
         AAT (Bluetooth) 연결 방법
@@ -269,12 +360,47 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         binding.btnTeststart.isInvisible = true
         binding.btnTestReset.isInvisible = true
         binding.btnTestcancel.isInvisible = true
+        binding.tvLog.movementMethod = ScrollingMovementMethod()
 
-        binding.btconnnectbt.setOnClickListener {
+        binding.autostartBT.isInvisible = true
+        binding.aatCmdReqBT.isInvisible = true
+        binding.frmlMassagebox.isInvisible = true
+
+/*        binding.btconnnectbt.setOnClickListener {
             //Toast.makeText(this, "btconnnectbt.setOnClickListener On", Toast.LENGTH_SHORT).show()
-            //listenBT()
             if (bluetoothAdapter!!.isEnabled) { // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
                 selectBluetoothDevice() // 블루투스 디바이스 선택 함수 호출
+            }
+        }*/
+
+        binding.btnAatConStatus.setOnClickListener{
+            if(btn_bt_status == 0) {
+                if (bluetoothAdapter!!.isEnabled) { // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
+                    selectBluetoothDevice() // 블루투스 디바이스 선택 함수 호출
+                }
+            }
+            else if(btn_bt_status == 1) {
+
+            }
+            else if(btn_bt_status == 2) {
+                if(aat_center_is) {
+                    binding.btnAatConStatus.background = null
+                }
+                else {
+                    binding.btnAatConStatus.background = ContextCompat.getDrawable(this, R.drawable.circle_border)
+                    binding.btnDroneConStatus.background = null
+                    drone_center_is = false
+                }
+                aat_center_is = !aat_center_is
+            }
+        }
+
+        binding.btnLogo.setOnClickListener {
+            testercount ++
+            if (testercount == 5) {
+                testermodeon = !testermodeon
+                testermodeon(testermodeon)
+                testercount = 0
             }
         }
 
@@ -283,13 +409,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
          */
         // 비행 시뮬레이터 다이얼로그 박스 이벤트 실행
         binding.autostartBT.setOnClickListener {
-            val testdialog = TestCustomDialog(this, Testdronespeed,Testradius,TestradiusPoint) {
-                spped, circleradius, circlepoint, circlestart, spin, btn ->
+            val testdialog = TestCustomDialog(this, Testdronespeed,TestAppalt,Testradius,TestradiusPoint) {
+                spped, alt, circleradius, circlepoint, circlestart, spin, infinity, btn ->
                 Testdronespeed = spped // 비행 스피드 값
+                TestAppalt = alt
                 Testradius = circleradius // 비행 시뮬레이터 원의 크기 (반지름)
                 TestradiusPoint = circlepoint // 비행 시뮬레이터 원의 마커 개수 (하나의 원에 몇개의 마커로 구성 할지 결정)
                 testag = circlestart // 비행 시뮬레이터 원의 시작 좌표
                 testcricleSW = spin // 비행 시뮬레이터 원의 회전 방향( 시계 방향 / 반시계 방향)
+                testinfinity = infinity // 비행 시뮬레이터 무한 동작
                 //val testmessage = Testdronespeed.toString() + " / " + TestradiusPoint.toString()  + " / " + testag.toString() + " / " + testcricleSW.toString()
                 if(btn){ // 원형 버튼 선택
                     //Toast.makeText(this,testmessage + " / circlebtn", Toast.LENGTH_SHORT).show()
@@ -335,15 +463,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
 
         // AAT 위치를 중앙으로하는 맵 이동
-        binding.aatcenterBT.setOnClickListener {
+/*        binding.aatcenterBT.setOnClickListener {
             if(BT_connect_Set){
                 sendDroneLOCIND(dronelat,dronelong,dronealt)
             }
             if(!Autoflyis){
-                moveATTcenterMap(AATlat,AATlong)
+                moveCenterMap(AATlat,AATlong)
                 movemarker(dronelat,dronelong,AATlat,AATlong)
             }
-        }
+        }*/
 
         //AAT CMD REQ SEND 버튼
         binding.aatCmdReqBT.setOnClickListener{
@@ -425,6 +553,23 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         } else {
             apiClient.connect()
         }
+
+        popup1 = findViewById(R.id.popup1)
+        popup2 = findViewById(R.id.popup2)
+
+
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+/*        try {
+            var logoutputStream = FileOutputStream(fileToWrite)
+            logoutputStream.close()
+            Toast.makeText(this, "파일 저장됨", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+        }*/
     }
 
     // 최초 앱 실행시 Map 관련 초기화 작업 진행
@@ -460,7 +605,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // 드론 이미지 드롭시 드론 이미지 위치 변경 및 AAT 좌표 전달 > 드론 테스트용 코드
     override fun onMarkerDragEnd(marker: Marker) {
         //googleMap?.clear()
-        movemarker(marker.position.latitude,marker.position.longitude,AATlat,AATlong)
+        movemarker(marker.position.latitude,marker.position.longitude,TestAppalt,AATlat,AATlong,AATalt)
     }
 
     // Google Map 기본 인터페이스
@@ -488,6 +633,77 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 removeMarker(marker)
             }
             true
+        }
+
+        googleMap!!.setOnCameraIdleListener {
+            custommapzoom = googleMap!!.cameraPosition.zoom
+            custommapzoom_scale = when {
+                custommapzoom > 18 -> 1.3f
+                custommapzoom > 16 -> 1.1f
+                custommapzoom > 14 -> 0.9f
+                custommapzoom > 12 -> 0.7f
+                else -> 0.6f
+            }
+        }
+
+        popup1.visibility = View.INVISIBLE
+        popup2.visibility = View.INVISIBLE
+
+        googleMap!!.setOnMarkerClickListener { marker ->
+            when (marker) {
+                markerDrone -> {
+                    popup1.visibility = if (popup1.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                }
+                markeranternna -> {
+                    popup2.visibility = if (popup2.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                }
+            }
+            true
+        }
+    }
+
+    private fun testermodeon(testeris : Boolean) {
+        if(testeris) {
+            binding.autostartBT.isInvisible = false
+            binding.aatCmdReqBT.isInvisible = false
+            binding.frmlMassagebox.isInvisible = false
+        }
+        else {
+            binding.autostartBT.isInvisible = true
+            binding.aatCmdReqBT.isInvisible = true
+            binding.frmlMassagebox.isInvisible = true
+        }
+    }
+
+    // btn_aat 이미지 변경
+
+    private fun change_btn_con_aat_icon(status: Int) {
+        if(status == 0){
+            binding.btnAatConStatus.setImageResource(R.drawable.img_aat_red)
+            btn_bt_status = 0
+        }
+        else if(status == 1){
+            binding.btnAatConStatus.setImageResource(R.drawable.img_aat_yellow)
+            btn_bt_status = 1
+        }
+        else if(status == 2){
+            binding.btnAatConStatus.setImageResource(R.drawable.img_aat_green)
+            btn_bt_status = 2
+        }
+    }
+
+    private fun change_btn_con_drone_icon(status: Int) {
+        if(status == 0){
+            binding.btnDroneConStatus.setImageResource(R.drawable.img_drone_red)
+            btn_usb_status = 0
+        }
+        else if(status == 1){
+            binding.btnDroneConStatus.setImageResource(R.drawable.img_drone_yellow)
+            btn_usb_status = 1
+        }
+        else if(status == 2){
+            binding.btnDroneConStatus.setImageResource(R.drawable.img_drone_green)
+            btn_usb_status = 2
         }
     }
 
@@ -608,6 +824,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // 비행 시뮬레이터 초기화
     private fun Autoflyreset() {
         googleMap!!.clear()
+        markeranternna = null
+        markerDrone = null
+        popup1.visibility = View.INVISIBLE
+        popup2.visibility = View.INVISIBLE
         markerList.clear()
         Autoflyis = false
         automarkerList.clear()
@@ -623,31 +843,56 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         CountSendDroneLOC_IND = 0
         thread(start = true){
             run breaker@{
-                automarkerList.forEachIndexed { index, latLng ->
-                    sleep(1000)
-                    if(Autoflyis) {
-                        runOnUiThread {
-                            if(!dronelat.equals(latLng.latitude))
-                            {
-                                ++CountSendDroneLOC_gps
-                            }
-                            dronelat = latLng.latitude
-                            dronelong = latLng.longitude
-                            dronealt = 350.0
-                            updatedroneLogview(dronelat.toString(),dronelong.toString(),dronealt.toString())
-                            movemarker(latLng.latitude, latLng.longitude, AATlat, AATlong)
-                            if(BT_connect_Set && !CMD_REQ_SW){
-                                sendDroneLOCIND(dronelat,dronelong,dronealt)
-                            }
-                            if(index == automarkerList.size - 1){
-                                CountSendDroneLOC_IND = 0
-                                CountSendDroneLOC_gps = 0
-                                binding.btnTeststart.isEnabled = true
-                            }
+                var shouldRunOnceAfterFalse = false
+                while (true) {
+                    if (testinfinity) {
+                        if (!shouldRunOnceAfterFalse) {
+                            shouldRunOnceAfterFalse = true
+                        } else {
+                            return@breaker
                         }
                     }
-                    else {
-                        return@breaker
+                    automarkerList.forEachIndexed { index, latLng ->
+                        sleep(1000)
+                        if (Autoflyis) {
+                            runOnUiThread {
+                                if (!dronelat.equals(latLng.latitude)) {
+                                    ++CountSendDroneLOC_gps
+                                }
+                                dronelat = latLng.latitude
+                                dronelong = latLng.longitude
+                                dronealt = TestAppalt
+                                updatedroneLogview(
+                                    dronelat.toString(),
+                                    dronelong.toString(),
+                                    dronealt.toString()
+                                )
+                                movemarker(
+                                    dronelat,
+                                    dronelong,
+                                    dronealt,
+                                    AATlat,
+                                    AATlong,
+                                    AATalt
+                                )
+/*                                if (BT_connect_Set && !CMD_REQ_SW) {
+                                    //sendDroneLOCIND(dronelat,dronelong,dronealt)
+                                }*/
+                                if (index == automarkerList.size - 1) {
+                                    CountSendDroneLOC_IND = 0
+                                    CountSendDroneLOC_gps = 0
+                                    if(testinfinity){
+                                        binding.btnTeststart.isEnabled = true
+                                    }
+                                    else{
+                                        binding.btnTeststart.isEnabled = false
+                                    }
+
+                                }
+                            }
+                        } else {
+                            return@breaker
+                        }
                     }
                 }
             }
@@ -673,87 +918,168 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // Map fun
 
     // 드론 이미지 표시에 대한 함수
-    private fun getBitmapDescriptorFactoryDrone(resId: Int): Bitmap? {
+    private fun getBitmapDescriptorFactoryDrone(resId: Int, scale : Float ): Bitmap? {
         var bitmap : Bitmap? = null
         val drawable = ResourcesCompat.getDrawable(resources, resId, null)
         if(drawable != null){
-            bitmap = Bitmap.createBitmap(75,75, Bitmap.Config.ARGB_8888)
+            bitmap = Bitmap.createBitmap(drawable.intrinsicWidth,drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             drawable.setBounds(0,0,canvas.width,canvas.height)
             drawable.draw(canvas)
         }
-        return bitmap
+        val width = (bitmap!!.width * scale).toInt()
+        val height = (bitmap.height * scale).toInt()
+        return Bitmap.createScaledBitmap(bitmap, width, height, true)
     }
 
     // AAT 이미지 표시에 대한 함수
-    private fun getBitmapDescriptorFactoryAnternna(resId: Int, anternnadeg: Float): Bitmap? {
+    private fun getBitmapDescriptorFactoryAnternna(resId: Int, anternnadeg: Float, scale : Float): Bitmap? {
         var bitmap : Bitmap? = null
         val drawable = ResourcesCompat.getDrawable(resources, resId, null)
         if(drawable != null){
-            bitmap = Bitmap.createBitmap(150,150, Bitmap.Config.ARGB_8888)
+            bitmap = Bitmap.createBitmap(drawable.intrinsicWidth,drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
-            canvas.rotate(anternnadeg,(canvas.width/2).toFloat(),(canvas.height/2).toFloat())
             drawable.setBounds(0,0,canvas.width,canvas.height)
             drawable.draw(canvas)
         }
-        return bitmap
+        val width = (bitmap!!.width * scale).toInt()
+        val height = (bitmap.height * scale).toInt()
+        return Bitmap.createScaledBitmap(bitmap, width, height, true)
     }
 
-    private fun moveATTcenterMap(latitude: Double, longitude: Double){
+    fun getLengthFromZoom(zoomLevel: Float, latitude: Double, desiredPixelLength: Float): Double {
+        val metersPerPixel = 156543.03392 * Math.cos(Math.toRadians(latitude)) / Math.pow(2.0, zoomLevel.toDouble())
+        val meterLength = metersPerPixel * desiredPixelLength
+
+        val earthRadius = 6378137.0 // meter
+        return (meterLength / earthRadius) * (180 / Math.PI) // 도(degree) 단위 거리로 변환
+    }
+
+    private fun moveCenterMap(latitude: Double, longitude: Double){
         val latLng = LatLng(latitude, longitude)
+
+        val zoomLevel = if (isFirstMapMove) {
+            isFirstMapMove = false
+            16f
+        } else {
+            custommapzoom
+        }
 
         val position : CameraPosition = CameraPosition.Builder()
             .target(latLng)
-            .zoom(15f)
+            .zoom(zoomLevel)
             .bearing(0f)
             .build() // 지도 중심 위치 이동
         googleMap!!.moveCamera(CameraUpdateFactory.newCameraPosition(position)) // 해당 좌표로 맵 이동
     }
     
     // RF 에서 드론 좌표값 변경시 마다 드론 이미지 및 AAT 이미지 갱신
-    private fun movemarker(dronelatitude: Double, dronelongitude: Double, aatlatitude: Double, aatlongitude: Double){
+    private fun movemarker(dronelatitude: Double, dronelongitude: Double, dronealt : Double, aatlatitude: Double, aatlongitude: Double, aatalt : Double){
         // 드론 좌표값 선언
         val dronelatLng = LatLng(dronelatitude, dronelongitude)
         // AAT 좌표값 선언
         val aatlatLng = LatLng(aatlatitude, aatlongitude)
 
-        Log.d(ContentValues.TAG, "receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude)
+        Log.d(ContentValues.TAG, "receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt)
+
+        val dronestatus = "위도 : " + String.format("%.7f", dronelatitude) + "\n경도 : " +  String.format("%.7f", dronelongitude) + "\n고도 : " + String.format("%.1f", dronealt)
+        val aatstatus = "위도 : " + aatlatitude + "\n경도 : " +  aatlongitude + "\n고도 : " + aatalt
 
         // 드론 좌표와 AAT 좌표를 기반으로 안테나 트레커 각도를 계산
         val anternnadeg = getBearing(aatlatitude,aatlongitude,dronelatitude,dronelongitude)
-        markerDrone?.remove()
-        markeranternna?.remove()
 
-        markerDrone = googleMap?.addMarker(
-            MarkerOptions()
-                    .icon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.drone)))
+        if (markerDrone == null) {
+            // 처음 마커 추가
+            markerDrone = googleMap?.addMarker(
+                MarkerOptions()
+                    .icon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_drone_org,custommapzoom_scale)))
                     .position(dronelatLng)
                     .draggable(true)
                     .anchor(0.5F,0.5F)
                     .title("Drone")
-        )
+                    .snippet(dronestatus)
+            )
+        } else {
+            // 기존 마커 위치, 타이틀, 스니펫만 갱신
+            markerDrone!!.position = dronelatLng
+            markerDrone!!.snippet = dronestatus
+        }
 
+        if (markeranternna == null) {
+            // 처음 마커 추가
+            markeranternna = googleMap?.addMarker(
+                MarkerOptions()
+                    .icon(
+                        BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryAnternna(R.drawable.img_aat_org_mk,
+                            abs((360F - anternnadeg.toFloat())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
+                        )))
+                    .position(aatlatLng)
+                    .draggable(true)
+                    .anchor(0.5F,0.5F)
+                    .title("Antenna")
+                    .snippet(aatstatus)
+            )
+        } else {
+            // 기존 마커 위치, 타이틀, 스니펫만 갱신
+            markeranternna!!.position = aatlatLng
+            markeranternna!!.rotation = abs((360F - anternnadeg.toFloat()))
+            markeranternna!!.snippet = aatstatus
+        }
 
-        markeranternna = googleMap?.addMarker(
-            MarkerOptions()
-                .icon(
-                    BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryAnternna(R.drawable.anternna_header,
-                        abs((360F - anternnadeg.toFloat())) // 안테나 각도계산 기반으로 이미지 회전
-                    )))
-                .position(aatlatLng)
-                .anchor(0.5f,0.5f)
-                .title("Antenna")
-        )
+        val projection = googleMap!!.projection
+
+        markerDrone?.position?.let {
+            val point = projection.toScreenLocation(it)
+            popup1.x = point.x.toFloat() - popup1.width / 2
+            popup1.y = point.y.toFloat() - popup1.height  - 45
+            popup1.text = dronestatus
+        }
+
+        markeranternna?.position?.let {
+            val point = projection.toScreenLocation(it)
+            popup2.x = point.x.toFloat() - popup2.width / 2
+            popup2.y = point.y.toFloat() - popup2.height - 45
+            popup2.text = aatstatus
+        }
         dronepolyline?.remove()
+        aatpolyline?.remove()
 
-        val polylineOptions = PolylineOptions().apply {
+        val draonepolylineOptions = PolylineOptions().apply {
             color(0xFFFFFF00.toInt()) // 선 색상 (파란색)
             width(8f) // 선 두께
             add(markerDrone!!.position)
             add(markeranternna!!.position)
         }
 
-        dronepolyline = googleMap?.addPolyline(polylineOptions) // 지도에 선 추가
+        val aatlinestart = LatLng(aatlatitude, aatlongitude)
+        val length = getLengthFromZoom(custommapzoom, aatlatitude, 150f)
+
+        // 각도를 라디안으로 변환
+        val aatlinerad = Math.toRadians(AATYaw)
+
+        // 간단한 거리 오프셋 계산 (작은 거리만 정확)
+        val aatlineendLat = aatlatitude + length * Math.cos(aatlinerad)
+        val aatlineendLng = aatlongitude + length * Math.sin(aatlinerad)
+
+        val aatlineend = LatLng(aatlineendLat, aatlineendLng)
+
+        val aatpolylineOptions = PolylineOptions().apply {
+            color(0xFF0000FF.toInt()) // 선 색상 (파란색)
+            width(8f) // 선 두께
+            add(aatlinestart, aatlineend)
+        }
+
+        if(aat_center_is) {
+            moveCenterMap(aatlatitude,aatlongitude)
+        }
+        if(drone_center_is){
+            moveCenterMap(dronelatitude,dronelongitude)
+        }
+
+
+
+        dronepolyline = googleMap?.addPolyline(draonepolylineOptions) // 지도에 선 추가
+        aatpolyline = googleMap?.addPolyline(aatpolylineOptions)
     }
 
     fun ConvertDecimalDegreesToRadians(deg: Double) : Double{
@@ -914,7 +1240,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                             }
                         }
 
-
                         val mavlinkConnection =
                             MavlinkConnection.create(pipedIn, UsbSerialOutputStream(serialDevice)) // Mavlink 선언
                         mavlinkDataProcessor = MavlinkDataProcessor(mavlinkConnection) // Mavlink Connect 실행
@@ -926,6 +1251,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                                 message!!
                             )
                         }
+                        change_btn_con_drone_icon(2)
                     } catch (e: IOException) {
                         e.printStackTrace()
                     }
@@ -966,11 +1292,24 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 dronelat = gpsMessage.lat() / 1E7 // Lat 값
                 dronelong = gpsMessage.lon() / 1E7 // Long 값
                 dronealt = gpsMessage.alt() / 1E3// Alt 값
+                var isggooddronedata = isValidGpsCoordinate(dronelat.toString(),dronelong.toString(),dronealt.toString())
+                if(isggooddronedata) {
+                    ++drone_data_true_count
+                }
+                else {
+                    ++drone_data_fail_count
+                }
                 updatedroneLogview(dronelat.toString(),dronelong.toString(),dronealt.toString())
                 if (bluetoothSocket?.isConnected == true){
-                    sendDroneLOCIND(dronelat,dronelong,dronealt)
+                    //sendDroneLOCIND(dronelat,dronelong,dronealt)
+                    var error_rate = 0
+                    if(drone_data_fail_count != 0)
+                        error_rate = drone_data_fail_count/(3+drone_data_fail_count)
+                    var dronedatafm = String.format("Lat : %f , Long : %f , Alt : %.2f / Total : %d , Truecount : %d, Failcount : %d, Error rate :  : %d ",
+                                        dronelat,dronelong,dronealt,drone_data_true_count+drone_data_fail_count,drone_data_true_count,drone_data_fail_count,error_rate)
+                    if(Logchange) newupdateLogView("V&V_Dronedata",dronedatafm)
                 }
-                movemarker(dronelat,dronelong,AATlat,AATlong)
+                movemarker(dronelat,dronelong,dronealt,AATlat,AATlong,AATalt)
             }
         }
     }
@@ -980,7 +1319,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private fun requestBluetoothPermissions() {
         val permissions = mutableListOf<String>()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         } else {
@@ -1020,30 +1359,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             // 디바이스를 선택하기 위한 다이얼로그 생성
             val builder = AlertDialog.Builder(this)
             builder.setTitle("페어링 되어있는 블루투스 디바이스 목록")
-            // 페어링 된 각각의 디바이스의 이름과 주소를 저장
-            val list: MutableList<String> = ArrayList()
 
-            // 모든 디바이스의 이름을 리스트에 추가
-            for (bluetoothDevice in devices!!) {
-                list.add(bluetoothDevice.name)
-            }
-            list.add("취소")
+            val deviceList = devices!!.map { it.name }.toTypedArray()
 
-            // List를 CharSequence 배열로 변경
-            val charSequences = list.toTypedArray<CharSequence>()
-            list.toTypedArray<CharSequence>()
-
-            // 해당 아이템을 눌렀을 때 호출 되는 이벤트 리스너
-            builder.setItems(
-                charSequences
-            ) { dialog, which -> // 해당 디바이스와 연결하는 함수 호출
-                connectBluetooth(charSequences[which].toString())
+            builder.setItems(deviceList) { dialog, which ->
+                connectBluetooth(deviceList[which])
             }
 
-            // 뒤로가기 버튼 누를 때 창이 안닫히도록 설정
-            builder.setCancelable(false)
+            builder.setNegativeButton("취소") { dialog, _ ->
+                dialog.dismiss()
+            }
 
-            // 다이얼로그 생성
             val alertDialog = builder.create()
             alertDialog.show()
         }
@@ -1066,7 +1392,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 break
             }
         }
-        Toast.makeText(this, bluetoothDevice.toString() + " 연결 완료", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, bluetoothDevice.toString() + " 연결 시작", Toast.LENGTH_SHORT).show()
 
         // UUID 생성
         val uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
@@ -1087,6 +1413,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         } catch (e: IOException) {
             e.printStackTrace()
             Log.e(ContentValues.TAG, "Bluetooth connection failed", e)
+            Toast.makeText(this, bluetoothDevice.toString() + " Bluetooth connection failed", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1105,10 +1432,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // AAT 전달용 StartREQ protocol 전달
         try {
             outputStream!!.write(startREQ)
-            updateLogView("sendStartREQ",bytesToHex(startREQ))
-            Log.d(dronelogv, "Sent StartREQ - " + bytesToHex(startREQ))
+            //updateLogView("sendStartREQ",bytesToHex(startREQ))
+            if(!Logchange) newupdateLogView("sendStartREQ",bytesToHex(startREQ))
+            //Log.d(dronelogv, "Sent StartREQ - " + bytesToHex(startREQ))
         } catch (e: IOException) {
-            Log.e(dronelogv, "Error sending StartREQ", e)
+            //Log.e(dronelogv, "Error sending StartREQ", e)
             throw e
         }
     }
@@ -1128,7 +1456,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // StopREQ protocol 전달
         try {
             outputStream!!.write(stopREQ)
-            updateLogView("sendStopREQ",bytesToHex(stopREQ))
+            //updateLogView("sendStopREQ",bytesToHex(stopREQ))
+            if(!Logchange) newupdateLogView("sendStopREQ",bytesToHex(stopREQ))
             Log.d(dronelogv, "Sent StopREQ - " + bytesToHex(stopREQ))
         } catch (e: IOException) {
             Log.e(dronelogv, "Error sending StopREQ", e)
@@ -1151,7 +1480,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // sendCMDREQ protocol 전달
         try {
             outputStream!!.write(CMDREQ)
-            updateLogView("sendCMDREQ_"+SendCMDREQ_MSG,bytesToHex(CMDREQ))
+            if(!Logchange) newupdateLogView("sendCMDREQ_"+SendCMDREQ_MSG,bytesToHex(CMDREQ))
             Log.d(dronelogv, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
             CMD_REQ_SW = true
         } catch (e: IOException) {
@@ -1216,8 +1545,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // AAT 전달용 DroneLOCIND protocol 전달
         try {
             outputStream!!.write(gpsData)
-            updateLogView("sendDroneLOCIND",bytesToHex(gpsData))
+            if(!Logchange) newupdateLogView("sendDroneLOCIND",bytesToHex(gpsData))
             ++CountSendDroneLOC_IND
+            aat_IND_time = System.nanoTime()
+            var aatDuration = String.format("IND_REQ_time : %.2f ms, IND_LOC_time : %.2f ms, Processing time : %.2f ms",
+                aat_REQ_time/1_000_000.0, aat_IND_time/1_000_000.0, (aat_IND_time-aat_REQ_time)/1_000_000.0)
+            if(Logchange) newupdateLogView("V&V_aatDuration",aatDuration)
             Log.d(
                 dronelogv,
                 "Sent DroneLOC_IND / Count : " + CountSendDroneLOC_IND.toString() + " / GPSupdatecount : " + CountSendDroneLOC_gps.toString() + " / LatInt = " + droneLatitudeIntPart + " / LatFrac = " + droneLatitudeFracPart + " / LonInt = " + droneLongitudeIntPart + " / LonFrac = " + droneLongitudeFracPart
@@ -1229,10 +1562,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // Bluetooth 메시지 확인용 thread
-    private fun startListeningForMessages() {
+    private fun startListeningForMessages2() {
         Log.d(ContentValues.TAG, "Start startListeningForMessages")
         Thread {
-            val buffer = ByteArray(1024)
+            var buffer = ByteArray(1024)
             var bytes: Int
             while (true) {
                 try {
@@ -1249,22 +1582,101 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 }
             }
         }.start()
+        change_btn_con_aat_icon(2)
+    }
+
+    // Bluetooth 메시지 확인용 thread
+    private fun startListeningForMessages() {
+        Log.d(ContentValues.TAG, "Start startListeningForMessages")
+
+        Thread {
+            try {
+                val stream = inputStream ?: return@Thread
+
+                val START_BYTE: Byte = 0xAA.toByte()
+                val END_BYTE: Byte = 0x55.toByte()
+
+                var state = 0 // 0: 대기, 1: 길이 수신, 2: 데이터 수신
+                var expectedLength = 0
+                val packetBuffer = mutableListOf<Byte>()
+
+                while (true) {
+                    val byte = stream.read()
+                    if (byte == -1) {
+                        Log.e(dronelogv, "Stream closed by remote device")
+                        break
+                    }
+
+                    val receivedByte = byte.toByte()
+
+                    when (state) {
+                        0 -> {
+                            if (receivedByte == START_BYTE) {
+                                packetBuffer.clear()
+                                packetBuffer.add(receivedByte)
+                                state = 1
+                            }
+                        }
+
+                        1 -> {
+                            expectedLength = receivedByte.toUByte().toInt()
+                            packetBuffer.add(receivedByte)
+                            state = 2
+                        }
+
+                        2 -> {
+                            packetBuffer.add(receivedByte)
+                            //Log.d(dronelogv, "packetBuffer packet " + packetBuffer)
+                            val totalLength = 1 + 1 + expectedLength + 1 + 1 // START + LEN + DATA + CHECKSUM + END
+                            if (packetBuffer.size == totalLength) {
+                                val checksumIndex = packetBuffer.size - 2
+                                val endByte = packetBuffer.last()
+                                val receivedChecksum = packetBuffer[checksumIndex]
+
+                                // 계산된 체크섬 (단순 합의 하위 8비트)
+                                val calculatedChecksum = 0x00.toByte()
+                                //Log.d(dronelogv, "packetBuffer packet " + bytesToHex(packetBuffer.toByteArray()))
+                                if (endByte == END_BYTE && receivedChecksum == calculatedChecksum) {
+                                    val packet = packetBuffer.toByteArray()
+                                    handler.post {
+                                        receiveREQ(packet)
+                                    }
+                                    //Log.d(dronelogv, "Valid packet received: ${packet.joinToString(" ") { it.toUByte().toString(16) }}")
+                                } else {
+                                    Log.w(dronelogv, "Invalid packet - checksum or end byte mismatch")
+                                }
+
+                                state = 0
+                                packetBuffer.clear()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(dronelogv, "Bluetooth read error", e)
+            }
+        }.start()
+
+        change_btn_con_aat_icon(2)
     }
 
     // AAT REQ 데이터 확인용 함수
     fun receiveREQ(buffer: ByteArray) {
         Log.d(ContentValues.TAG, "packet " + bytesToHex(buffer))
         val endIndex = buffer.indexOf(0x55.toByte())
+        //val slicebuffer = buffer.copyOfRange(0,50)
         val slicebuffer = if (endIndex != -1 && buffer[endIndex-1] == 0x00.toByte()) buffer.copyOfRange(0,endIndex+1) else buffer
         if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x08.toByte() && buffer[10] == 0x00.toByte()) { //AAT_Ready_Brdcst
             Log.d(ContentValues.TAG, "Receive AAT_Ready_Brdcst from AAT")
+            AAT_ID = byteArrayOf(buffer[2],buffer[3],buffer[4],buffer[5])
             sendStartREQ()
-            updateLogView("receive AAT_Ready_Brdcst",bytesToHex(slicebuffer))
-        } else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1D.toByte()) { // Drone_LOC_REQ
+            if(!Logchange) newupdateLogView("receive AAT_Ready_Brdcst",bytesToHex(slicebuffer))
+        } else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x1D.toByte() && buffer[31] == 0x00.toByte() && buffer[32] == 0x55.toByte()) { // Drone_LOC_REQ
+            aat_REQ_time = System.nanoTime()
             Log.d(ContentValues.TAG, "Receive test Drone_Loc_Req from AAT")
             // Parse the AAT_GPS coordinates
             // AAT 데이터 파싱
-            AAT_REQ_ID = byteArrayOf(buffer[2],buffer[3],buffer[4],buffer[5])
+            AAT_ID = byteArrayOf(buffer[2],buffer[3],buffer[4],buffer[5])
             val aatLatIntPart = bytesToLong(buffer, 6)
             val aatLatFracPart = bytesToLong(buffer, 10)
             val aatLonIntPart = bytesToLong(buffer, 14)
@@ -1273,6 +1685,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             AATlong = aatLonIntPart + (aatLonFracPart / 1e7) // AAT long 값 파싱 및 변환
             val yaw_byteArray = byteArrayOf(buffer[26], buffer[27])
             val intyawValue = bytesToShort(yaw_byteArray)
+            AATYaw = intyawValue.toDouble()
             val tilt_byteArray = byteArrayOf(buffer[28], buffer[29])
             val inttiltValue = bytesToShort(tilt_byteArray)
             //AATlat = bytesToFloat(buffer, 22)
@@ -1306,7 +1719,22 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             //Log.d(dronelogv, "receiveREQ AAT GPS lat : " + AATlat + " long : " + AATlong)
             //Log.d(dronelogv, "receiveREQ AAT yaw : " + intyawValue + " tilt : " + inttiltValue)
 
-            updateLogView("receive Drone_LOC_REQ",bytesToHex(slicebuffer))
+            if(isValidAATGpsCoordinate(AATlat.toString(),AATlong.toString(),AATalt.toString(),AATYaw.toString())){
+                ++aat_data_true_count
+            }
+            else {
+                ++aat_data_fail_count
+            }
+
+            var aat_error_rate = 0
+            if(aat_data_fail_count != 0)
+                aat_error_rate = aat_data_fail_count/(aat_data_true_count+aat_data_fail_count)
+            var aatdatafm = String.format("Lat : %f , Long : %f , Alt : %.2f , Yaw : %.2f / Total : %d , Truecount : %d, Failcount : %d, Error rate :  : %d ",
+                AATlat,AATlong,AATalt,AATYaw,aat_data_true_count+aat_data_fail_count,aat_data_true_count,aat_data_fail_count,aat_error_rate)
+
+            if(Logchange) newupdateLogView("V&V_AATdata",aatdatafm)
+
+            if(!Logchange) newupdateLogView("receive Drone_LOC_REQ",bytesToHex(slicebuffer))
 
             //AAT_Latitude = aatLatIntPart + (aatLatFracPart / 1e7)
             //AAT_Longitude = aatLonIntPart + (aatLonFracPart / 1e7)
@@ -1319,7 +1747,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
             // AAT 상태값 파싱 및 출력
 
-            //sendDroneLOCIND(dronelat,dronelong,dronealt)
+            sendDroneLOCIND(dronelat,dronelong,dronealt)
             Log.d(dronelogv, "Send Drone_Loc_Req from APP")
 
         } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0A.toByte()){ // AAT_CMD_IND
@@ -1328,12 +1756,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             val value = bytesToHex(buffer,10,2)
             Log.d(dronelogv, "AAT_CMD_IND AAT Status packet " + value)
             CMD_REQ_SW = false
-            updateLogView("receive AAT_CMD_IND",bytesToHex(slicebuffer))
+            if(!Logchange) newupdateLogView("receive AAT_CMD_IND",bytesToHex(slicebuffer))
         }
         else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x05.toByte() && buffer[6] == 0x0B.toByte()) { // STOP_ACK
             // Handle stop acknowledgment
             stopCommunication()
-            updateLogView("receive STOP_ACK",bytesToHex(slicebuffer))
+            if(!Logchange) newupdateLogView("receive STOP_ACK",bytesToHex(slicebuffer))
         }
     }
 
@@ -1374,6 +1802,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return sb.toString()
     }
 
+
     // Bytes > Hex 변환 (자리수 입력) > AAT에서 App으로 온 데이터 파싱용으로 사용
     private fun bytesToHex(bytes: ByteArray, start: Int, length: Int): String {
         val sb = StringBuilder()
@@ -1407,6 +1836,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 bluetoothSocket!!.close()
             }
             handler.removeCallbacks(autoflystatusUpdateTask!!)
+            change_btn_con_aat_icon(0)
             Log.d(ContentValues.TAG, "Stopped communication")
         } catch (e: IOException) {
             e.printStackTrace()
@@ -1416,10 +1846,39 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     // Messagebox
     private fun updateLogView(send: String , message: String) {
         CoroutineScope(Dispatchers.Main).launch {
+            val lineCount = binding.tvLog.getLineCount()
+            if (lineCount >= 200)
+                binding.tvLog.text = ""
             val localDataTime : LocalDateTime = LocalDateTime.now()
             binding.tvLog.text = "${binding.tvLog.text}$localDataTime : [$send] - $message\n"
+            val layout = binding.tvLog.layout
+            if (layout != null) {
+                val scrollAmount = layout.getLineTop(binding.tvLog.lineCount) - binding.tvLog.height
+                if (scrollAmount > 0)
+                    binding.tvLog.scrollTo(0, scrollAmount)
+                else
+                    binding.tvLog.scrollTo(0, 0)
+            }
         }
     }
+
+    private fun newupdateLogView(send: String , message: String) {
+        val maxline = 200
+        val lines = binding.tvLog.text.split("\n").toMutableList()
+        val localDataTime : LocalDateTime = LocalDateTime.now()
+        var updatasting = "$localDataTime : [$send] - $message\n"
+        //var logoutputStream = FileOutputStream(fileToWrite,true)
+        //logoutputStream.write((updatasting + "\n").toByteArray())
+        //logoutputStream.close()
+        lines.add(0,updatasting)
+
+        if(lines.size > maxline) {
+            lines.subList(maxline, lines.size).clear()
+        }
+
+        binding.tvLog.text = lines.joinToString("\n")
+    }
+
 
     // 로그 화면 드론 좌표값 업데이트
     private fun updatedroneLogview(lat : String, long : String, alt : String) {
@@ -1431,11 +1890,88 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // 로그 화면 AAT 좌표값 업데이트
     private fun updateaatLogview(lat : String, long : String, alt : String, yaw : String, tilt : String, status : String) {
-        binding.tvMasboxAatllat.text = "lat : " + lat
-        binding.tvMasboxAatlong.text = "lon : " + long
-        binding.tvMasboxAatalt.text = "alt : " + alt
+        binding.tvMasboxAatllat.text = "lat : " + String.format("%.7f", lat.toDouble())
+        binding.tvMasboxAatlong.text = "lon : " + String.format("%.7f",long.toDouble())
+        binding.tvMasboxAatalt.text = "alt : " + String.format("%.1f",alt.toDouble())
         binding.tvMasboxAatyaw.text = "yaw : " + yaw
         binding.tvMasboxAattilt.text = "tilt : " + tilt
         binding.tvMasboxAatstatus.text = "status : " + status
+    }
+
+    fun isValidGpsCoordinate(latStr: String?, lonStr: String?, altStr: String?): Boolean {
+        val lat = latStr?.toDoubleOrNull()
+        val lon = lonStr?.toDoubleOrNull()
+        val alt = altStr?.toDoubleOrNull()
+
+        if (lat == null || lon == null || alt == null) return false
+
+        val isLatValid = lat in -90.0..90.0
+        val isLonValid = lon in -180.0..180.0
+        val isAltValid = alt in -500.0..10000.0
+
+        return isLatValid && isLonValid && isAltValid
+    }
+
+    fun isValidAATGpsCoordinate(latStr: String?, lonStr: String?, altStr: String?, yawStr: String?): Boolean {
+        val lat = latStr?.toDoubleOrNull()
+        val lon = lonStr?.toDoubleOrNull()
+        val alt = altStr?.toDoubleOrNull()
+        val yaw = yawStr?.toDoubleOrNull()
+
+        if (lat == null || lon == null || alt == null || yaw == null) return false
+
+        val isLatValid = lat in -90.0..90.0
+        val isLonValid = lon in -360.0..360.0
+        val isAltValid = alt in -500.0..10000.0
+        val isYawValid = yaw in -360.0..360.0
+
+        return isLatValid && isLonValid && isAltValid && isYawValid
+    }
+
+    // 외부 저장소 추가
+/*    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == REQUEST_CODE && grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            prepareFile()
+        } else {
+            Toast.makeText(this, "외부 저장소 권한 필요", Toast.LENGTH_SHORT).show()
+        }
+    }*/
+
+    private fun prepareFile() {
+        if (isFilePrepared) return  // 이미 준비했으면 무시
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val todayDate = dateFormat.format(Date())
+
+        val lastDate = prefs.getString("last_run_date", null)
+        var runCount: Int
+        if (todayDate == lastDate) {
+            // 같은 날이면 기존 번호 +1
+            runCount = prefs.getInt(KEY_RUN_COUNT, 0) + 1
+        } else {
+            // 날짜가 바뀌었으면 runCount 초기화
+            runCount = 1
+            prefs.edit().putString("last_run_date", todayDate).apply()
+        }
+
+        val fileName = "${todayDate}_$runCount.txt"
+
+        val saveDir = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "Sunflower")
+
+        //val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "Sunflower")
+        if (!saveDir.exists()) saveDir.mkdirs()
+
+        fileToWrite = File(saveDir, fileName)
+        if (!fileToWrite!!.exists()) {
+            fileToWrite!!.createNewFile()
+            Toast.makeText(this, "파일 생성됨: ${fileToWrite!!.absolutePath}", Toast.LENGTH_SHORT).show()
+        }
+        isFilePrepared = true
     }
 }
