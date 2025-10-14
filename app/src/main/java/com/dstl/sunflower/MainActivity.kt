@@ -1762,7 +1762,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             // Handle stop acknowledgment
             stopCommunication()
             if(!Logchange) newupdateLogView("receive STOP_ACK",bytesToHex(slicebuffer))
-            //test
         }
     }
 
