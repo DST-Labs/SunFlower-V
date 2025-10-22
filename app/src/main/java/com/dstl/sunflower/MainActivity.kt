@@ -714,11 +714,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             MarkerOptions()
                 .position(position)
                 .icon(getMarkerIconWithNumber(markerNumber))
-
         )
         marker?.let {
             markerList.add(it)
-
         }
         drawPolyline()
     }
@@ -736,7 +734,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             )
             newMarker?.let { tempList.add(it) }
         }
-
         markerList.clear()
         markerList.addAll(tempList) // 리스트 업데이트
     }
