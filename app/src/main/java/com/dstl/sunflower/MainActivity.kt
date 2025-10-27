@@ -86,6 +86,8 @@ import java.io.OutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.lang.Thread.sleep
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.util.Date
@@ -165,6 +167,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var AATlong = 127.008915 // AAT long
     var AATalt = 30.0 // AAT alt
     var AATYaw = 0.0
+    var AATrssi = 0
+    var AATresult_rssi = 0
 
     val PI = 3.14159265358979323846 // 안테나 트래커 방향 전환용 변수
 
@@ -245,6 +249,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     val Logchange = false // 0 : normal , 1 : V&V
 
+    // manual angle
+    var isManualAngle = false
+    var ManualAngle = 0
+
     // lifecycle
     override fun onStart() {
         super.onStart()
@@ -321,7 +329,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 )
             }
         }*/
-
+        // 드론 연결 버튼
         binding.btnDroneConStatus.setOnClickListener{
             if(btn_usb_status == 0) {
                 usbHelper!!.showUsbDeviceList { device: UsbDevice? ->
@@ -372,7 +380,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 selectBluetoothDevice() // 블루투스 디바이스 선택 함수 호출
             }
         }*/
-
+        // 안테나 트래커 연결 버튼
         binding.btnAatConStatus.setOnClickListener{
             if(btn_bt_status == 0) {
                 if (bluetoothAdapter!!.isEnabled) { // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
@@ -395,6 +403,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
         }
 
+        // 로고 선택 버튼
         binding.btnLogo.setOnClickListener {
             testercount ++
             if (testercount == 5) {
@@ -462,6 +471,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             binding.btnTestcancel.isInvisible = true
         }
 
+        binding.BTManualAngle.setOnClickListener {
+            if(!binding.tvManualAngle.text.isEmpty()) {
+                ManualAngle = binding.tvManualAngle.text.toString().toInt()
+                isManualAngle = true
+            }
+        }
+
         // AAT 위치를 중앙으로하는 맵 이동
 /*        binding.aatcenterBT.setOnClickListener {
             if(BT_connect_Set){
@@ -524,9 +540,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
             true
         }
-
-
-
 
         // google Map 선언
         val requestPermissionLauncher = registerForActivityResult(
@@ -676,7 +689,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // btn_aat 이미지 변경
-
     private fun change_btn_con_aat_icon(status: Int) {
         if(status == 0){
             binding.btnAatConStatus.setImageResource(R.drawable.img_aat_red)
@@ -944,6 +956,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return Bitmap.createScaledBitmap(bitmap, width, height, true)
     }
 
+    // Map Zoom Level에 따른 거리 조정
     fun getLengthFromZoom(zoomLevel: Float, latitude: Double, desiredPixelLength: Float): Double {
         val metersPerPixel = 156543.03392 * Math.cos(Math.toRadians(latitude)) / Math.pow(2.0, zoomLevel.toDouble())
         val meterLength = metersPerPixel * desiredPixelLength
@@ -952,6 +965,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return (meterLength / earthRadius) * (180 / Math.PI) // 도(degree) 단위 거리로 변환
     }
 
+    // 해당 좌표로 Map 중앙점 이동
     private fun moveCenterMap(latitude: Double, longitude: Double){
         val latLng = LatLng(latitude, longitude)
 
@@ -1079,13 +1093,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         aatpolyline = googleMap?.addPolyline(aatpolylineOptions)
     }
 
-    fun ConvertDecimalDegreesToRadians(deg: Double) : Double{
-        return (deg * PI / 180);
-    }
-    fun ConvertRadiansToDecimalDegrees(rad: Double) : Double{
-        return (rad * 180 / PI);
-    }
-
     // sp를 px로 변환하는 함수
     private fun spToPx(sp: Float): Float {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
@@ -1099,6 +1106,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val x = sin(lon_diff_rad) * cos(lat2_rad)
         val y = cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(lon_diff_rad)
         return ((ConvertRadiansToDecimalDegrees(atan2(y, x)) + 360) % 360).toInt()
+    }
+    // getBearing 사용 함수1
+    fun ConvertDecimalDegreesToRadians(deg: Double) : Double{
+        return (deg * PI / 180);
+    }
+
+    // getBearing 사용 함수2
+    fun ConvertRadiansToDecimalDegrees(rad: Double) : Double{
+        return (rad * 180 / PI);
     }
 
     // 포인트 개수만큼 원형 좌표 생성 함수
@@ -1486,8 +1502,41 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
     }
 
+    @Throws(IOException::class)
+    private fun Send_AAT_CMD_REQ_Manual_Angle(angle : Int) {
+        // AAT 전달용 StopREQ 생성
+        val stopREQ = ByteArray(10)
+        stopREQ[0] = 0xAA.toByte() // STX
+        stopREQ[1] = 0x06.toByte() // LEN
+        memcpy(stopREQ, 2, AAT_ID, 0, 4) // App_ID
+        if(isManualAngle){
+            require(angle in 0..359) { "angle must be 0..359, but was $angle" }
+
+            val value = 0xB000 or (angle and 0x0FFF) // 상위 nibble B, 하위 12비트에 angle
+            stopREQ[6] = ((value ushr 8) and 0xFF).toByte()
+            stopREQ[7] = (value and 0xFF).toByte()
+        }
+        else {
+            stopREQ[6] = 0x00.toByte() // command
+            stopREQ[7] = 0x00.toByte() // command
+        }
+        stopREQ[8] = 0xFF.toByte() // Checksum
+        stopREQ[9] = 0x55.toByte() // ETX
+
+        // StopREQ protocol 전달
+        try {
+            outputStream!!.write(stopREQ)
+            //updateLogView("sendStopREQ",bytesToHex(stopREQ))
+            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(stopREQ))
+            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(stopREQ))
+        } catch (e: IOException) {
+            Log.e(dronelogv, "Error sending Send_AAT_CMD_REQ", e)
+            throw e
+        }
+    }
+
     // RF 위도 경도 고도 AAT 전달
-    private fun sendDroneLOCIND(drone_lat: Double, drone_long: Double, drone_alt: Double) {
+    private fun Send_Drone_LOC_IND(drone_lat: Double, drone_long: Double, drone_alt: Double) {
         // Example GPS data
         /*double droneLatitude = 37.8744341;
         double droneLongitude = 127.1566792;
@@ -1502,9 +1551,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
 
         // AAT 전달용 DroneLOCIND 생성
-        val gpsData = ByteArray(29)
+        val gpsData = ByteArray(31)
         gpsData[0] = 0xAA.toByte() // STX
-        gpsData[1] = 0x19.toByte() // LEN
+        gpsData[1] = 0x1B.toByte() // LEN
         memcpy(gpsData, 2, App_ID, 0, 4) // App_ID
         memcpy(gpsData, 6, longToBytes(droneLatitudeIntPart), 0, 4) //drone_Latitude integer part
         memcpy(
@@ -1535,14 +1584,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             0,
             4
         ) // drone_Altitude
-        gpsData[26] = 0x0F.toByte() // Drone status
-        gpsData[27] = 0xFF.toByte() // Checksum
-        gpsData[28] = 0x55.toByte() // ETX
+        gpsData[26] = 0x00.toByte() // Angle
+        gpsData[27] = 0x00.toByte() // Angle
+        gpsData[28] = 0x0F.toByte() // Drone status
+        gpsData[29] = 0xFF.toByte() // Checksum
+        gpsData[30] = 0x55.toByte() // ETX
 
         // AAT 전달용 DroneLOCIND protocol 전달
         try {
             outputStream!!.write(gpsData)
-            if(!Logchange) newupdateLogView("sendDroneLOCIND",bytesToHex(gpsData))
+            if(!Logchange) newupdateLogView("Send_Drone_LOC_IND",bytesToHex(gpsData))
             ++CountSendDroneLOC_IND
             aat_IND_time = System.nanoTime()
             var aatDuration = String.format("IND_REQ_time : %.2f ms, IND_LOC_time : %.2f ms, Processing time : %.2f ms",
@@ -1550,11 +1601,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             if(Logchange) newupdateLogView("V&V_aatDuration",aatDuration)
             Log.d(
                 dronelogv,
-                "Sent DroneLOC_IND / Count : " + CountSendDroneLOC_IND.toString() + " / GPSupdatecount : " + CountSendDroneLOC_gps.toString() + " / LatInt = " + droneLatitudeIntPart + " / LatFrac = " + droneLatitudeFracPart + " / LonInt = " + droneLongitudeIntPart + " / LonFrac = " + droneLongitudeFracPart
+                "Send_Drone_LOC_IND / Count : " + CountSendDroneLOC_IND.toString() + " / GPSupdatecount : " + CountSendDroneLOC_gps.toString() + " / LatInt = " + droneLatitudeIntPart + " / LatFrac = " + droneLatitudeFracPart + " / LonInt = " + droneLongitudeIntPart + " / LonFrac = " + droneLongitudeFracPart
             )
         } catch (e: IOException) {
             e.printStackTrace()
-            Log.e(dronelogv, "Error sending DroneLOC_IND", e)
+            Log.e(dronelogv, "Error sending Send_Drone_LOC_IND", e)
         }
     }
 
@@ -1680,11 +1731,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             val aatLonFracPart = bytesToLong(buffer, 18)
             AATlat = aatLatIntPart + (aatLatFracPart / 1e7) // AAT lat 값 파싱 및 변환
             AATlong = aatLonIntPart + (aatLonFracPart / 1e7) // AAT long 값 파싱 및 변환
+            val altbyteArray = byteArrayOf(buffer[22], buffer[23], buffer[24], buffer[25]) // 1.0f에 해당하는 바이트 (리틀 엔디안)
+            AATalt = bytesToFloat(altbyteArray).toDouble()
             val yaw_byteArray = byteArrayOf(buffer[26], buffer[27])
             val intyawValue = bytesToShort(yaw_byteArray)
+            //AATYaw = intyawValue.toDouble()
+            //val tilt_byteArray = byteArrayOf(buffer[28], buffer[29])
+            //val inttiltValue = bytesToShort(tilt_byteArray)
             AATYaw = intyawValue.toDouble()
-            val tilt_byteArray = byteArrayOf(buffer[28], buffer[29])
-            val inttiltValue = bytesToShort(tilt_byteArray)
+            val tilt = byteToInt(buffer[28])
+            AATrssi = byteToInt(buffer[29])
+            val tiltandRSSI = String.format(tilt.toString() + " / " + AATrssi.toString())
             //AATlat = bytesToFloat(buffer, 22)
 
             val status = buffer[30]
@@ -1694,6 +1751,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             when (status) {
                 0x00.toByte() -> statusStr = "AAT OK"
                 //0xAx : AAT not ready
+
                 0xA0.toByte() -> statusStr = "AAT is under resetting"
                 0xA1.toByte() -> statusStr = "Compass Calibration goes on"
                 0xA2.toByte() -> statusStr = "GPS is under searching SATs"
@@ -1711,7 +1769,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 0xD2.toByte() -> statusStr = "target antenna tracking unavailable"
             }
 
-            updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),inttiltValue.toString(),statusStr)
+            updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),tiltandRSSI,statusStr)
+            //updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),inttiltValue.toString(),statusStr)
             //Log.d(dronelogv, "receiveREQ AAT ID: " + bytesToHex(AAT_REQ_ID))
             //Log.d(dronelogv, "receiveREQ AAT GPS lat : " + AATlat + " long : " + AATlong)
             //Log.d(dronelogv, "receiveREQ AAT yaw : " + intyawValue + " tilt : " + inttiltValue)
@@ -1743,16 +1802,27 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             //AAT_Altitude = bytesToFloat(buffer, 22)
 
             // AAT 상태값 파싱 및 출력
-
-            sendDroneLOCIND(dronelat,dronelong,dronealt)
+            if(!isManualAngle) {
+                Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
+            }
+            else {
+                Send_AAT_CMD_REQ_Manual_Angle(ManualAngle)
+                binding.BTManualAngle.isInvisible = true
+            }
             Log.d(dronelogv, "Send Drone_Loc_Req from APP")
 
-        } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0A.toByte()){ // AAT_CMD_IND
+        } else if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x0B.toByte() && buffer[13] == 0x00.toByte() && buffer[14] == 0x55.toByte()){ // AAT_CMD_IND
 
             Log.d(dronelogv, "AAT_CMD_IND packet " + bytesToHex(buffer))
             val value = bytesToHex(buffer,10,2)
             Log.d(dronelogv, "AAT_CMD_IND AAT Status packet " + value)
+
+            isManualAngle = false
+            binding.BTManualAngle.isInvisible = false
             CMD_REQ_SW = false
+            if(!isManualAngle) {
+                Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
+            }
             if(!Logchange) newupdateLogView("receive AAT_CMD_IND",bytesToHex(slicebuffer))
         }
         else if (buffer[0] == 0xAA.toByte() && buffer[1] == 0x05.toByte() && buffer[6] == 0x0B.toByte()) { // STOP_ACK
@@ -1799,7 +1869,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return sb.toString()
     }
 
-
     // Bytes > Hex 변환 (자리수 입력) > AAT에서 App으로 온 데이터 파싱용으로 사용
     private fun bytesToHex(bytes: ByteArray, start: Int, length: Int): String {
         val sb = StringBuilder()
@@ -1822,9 +1891,24 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         return value
     }
 
+    // 2byte > 숫자로 변환 > AAT에서 App으로 온 데이터 파싱용으로 사용
     private fun bytesToShort(bytes: ByteArray): Short {
         return ((bytes[1].toInt() shl 8) or (bytes[0].toInt() and 0xFF)).toShort()
     }
+
+    // byte > 숫자로 변환
+    fun byteToInt(byteValue: Byte): Int {
+        return byteValue.toInt() and 0xFF
+    }
+
+    fun bytesToFloat(bytes: ByteArray): Float {
+        require(bytes.size == 4) { "Byte array must be exactly 4 bytes" }
+        return ByteBuffer.wrap(bytes)
+            .order(ByteOrder.LITTLE_ENDIAN) // 필요에 따라 BIG_ENDIAN으로 변경
+            .float
+    }
+
+    // Messages 정지
     private fun stopCommunication() {
         try {
             if (bluetoothSocket != null) {
@@ -1840,6 +1924,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             Log.e(ContentValues.TAG, "Error stopping communication", e)
         }
     }
+
     // Messagebox
     private fun updateLogView(send: String , message: String) {
         CoroutineScope(Dispatchers.Main).launch {
@@ -1886,12 +1971,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // 로그 화면 AAT 좌표값 업데이트
-    private fun updateaatLogview(lat : String, long : String, alt : String, yaw : String, tilt : String, status : String) {
+    private fun updateaatLogview(lat : String, long : String, alt : String, yaw : String, tiltRSSI : String, status : String) {
         binding.tvMasboxAatllat.text = "lat : " + String.format("%.7f", lat.toDouble())
         binding.tvMasboxAatlong.text = "lon : " + String.format("%.7f",long.toDouble())
         binding.tvMasboxAatalt.text = "alt : " + String.format("%.1f",alt.toDouble())
         binding.tvMasboxAatyaw.text = "yaw : " + yaw
-        binding.tvMasboxAattilt.text = "tilt : " + tilt
+        binding.tvMasboxAattilt.text = "tilt/RSSI : " + tiltRSSI
         binding.tvMasboxAatstatus.text = "status : " + status
     }
 
