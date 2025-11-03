@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Point
 import android.graphics.Typeface
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
@@ -162,6 +163,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var custommapzoom : Float = 15f
     var custommapzoom_scale : Float = 1.0f
 
+    private var lastTouchLatLng: LatLng? = null
+    private lateinit var touchOverlay: View
+
     // GPS 관련 변수 선언
     var AATlat = 37.488006 // AAT lat
     var AATlong = 127.008915 // AAT long
@@ -177,6 +181,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var dronealt = 30.0 // Drone alt
     var markerDrone : Marker? = null // 드론 이미지
     var markeranternna : Marker? = null // AAT 이미지
+    var markerangle : Marker? = null // 수동 조정 이미지
 
 
     // Test 비행 시뮬레이션 관련 변수 선언
@@ -251,6 +256,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     // manual angle
     var isManualAngle = false
+    var isManualAngle_touch = false
     var ManualAngle = 0
 
     // lifecycle
@@ -322,13 +328,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         // RF USB 실행및 활성화
 
-/*        binding.rfconnectbt.setOnClickListener {
-            usbHelper!!.showUsbDeviceList { device: UsbDevice? ->
-                this.onDeviceSelected(
-                    device!!
-                )
-            }
-        }*/
         // 드론 연결 버튼
         binding.btnDroneConStatus.setOnClickListener{
             if(btn_usb_status == 0) {
@@ -471,10 +470,23 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             binding.btnTestcancel.isInvisible = true
         }
 
-        binding.BTManualAngle.setOnClickListener {
-            if(!binding.tvManualAngle.text.isEmpty()) {
-                ManualAngle = binding.tvManualAngle.text.toString().toInt()
-                isManualAngle = true
+        binding.btnAatManualAngle.setOnClickListener {
+            if(BT_connect_Set) {
+                isManualAngle = !isManualAngle
+                if(isManualAngle){
+                    change_btn_con_manual_icon(1)
+                    manualanglemarker(AATlat,AATlong,1)
+                    isManualAngle_touch = true
+                }
+                else {
+                    change_btn_con_manual_icon(0)
+                    removemanualanglemarker()
+                    isManualAngle_touch = false
+                    Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
+                }
+            }
+            else {
+                Toast.makeText(this, " NO Connect AAT !!", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -625,6 +637,20 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     override fun onConnectionFailed(p0: ConnectionResult) {
     }
 
+    private fun handleMapTap(latLng: LatLng) {
+        if(testOnoff){
+            addMarker(latLng)
+        }
+        else if(isManualAngle){
+            var testangle = bearingBetweenPoints(AATlat,AATlong,latLng.latitude,latLng.longitude)
+            //Toast.makeText(applicationContext, "LATLOG : " + latLng.latitude + "," + latLng.longitude, Toast.LENGTH_LONG)
+            if(isManualAngle_touch) {
+                newupdateLogView("sendStartREQ","LATLOG : " + latLng.latitude + "," + latLng.longitude + ", angle : " + testangle)
+                Send_AAT_CMD_REQ_Manual_Angle(testangle)
+            }
+        }
+    }
+
 
     // Google Map 동작 완료시 구글 맵 선언
     override fun onMapReady(p0: GoogleMap?) {
@@ -635,17 +661,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         googleMap!!.uiSettings.isCompassEnabled = true
 
-        googleMap!!.setOnMapClickListener { latLng ->
-            if(testOnoff){
-                addMarker(latLng)
-            }
-        }
 
-        googleMap!!.setOnMarkerClickListener { marker ->
-            if(testOnoff){
-                removeMarker(marker)
-            }
-            true
+        googleMap!!.setOnMapClickListener { latLng ->
+            handleMapTap(latLng)
         }
 
         googleMap!!.setOnCameraIdleListener {
@@ -663,6 +681,32 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         popup2.visibility = View.INVISIBLE
 
         googleMap!!.setOnMarkerClickListener { marker ->
+
+            val tag = (marker.tag as? String)?.trim().orEmpty()
+
+            if(testOnoff){
+                removeMarker(marker)
+            }
+            when (tag) {
+                "manualanlge" -> {
+                    handleMapTap(marker.position)
+                    true
+                }
+                "markerDrone" -> {
+                    popup1.visibility = if (popup1.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                    true
+                }
+                "markeranternna" -> {
+                    popup2.visibility = if (popup2.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                    true
+                }
+                else -> {
+                    true
+                }
+            }
+
+        }
+/*        googleMap!!.setOnMarkerClickListener { marker ->
             when (marker) {
                 markerDrone -> {
                     popup1.visibility = if (popup1.visibility == View.VISIBLE) View.GONE else View.VISIBLE
@@ -672,7 +716,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 }
             }
             true
-        }
+        }*/
+
+
+
     }
 
     private fun testermodeon(testeris : Boolean) {
@@ -716,6 +763,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         else if(status == 2){
             binding.btnDroneConStatus.setImageResource(R.drawable.img_drone_green)
             btn_usb_status = 2
+        }
+    }
+
+    private fun change_btn_con_manual_icon(status: Int) {
+        if(status == 0){
+            binding.btnAatManualAngle.setImageResource(R.drawable.img_aat_manualangle_red)
+        }
+        else if(status == 1){
+            binding.btnAatManualAngle.setImageResource(R.drawable.img_aat_manualangle_green)
         }
     }
 
@@ -983,6 +1039,37 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             .build() // 지도 중심 위치 이동
         googleMap!!.moveCamera(CameraUpdateFactory.newCameraPosition(position)) // 해당 좌표로 맵 이동
     }
+
+    private fun manualanglemarker(aatlatitude: Double, aatlongitude: Double, changeicon : Int) {
+
+        val aatlatLng = LatLng(aatlatitude, aatlongitude)
+
+        if (isManualAngle){
+            if(markerangle == null) {
+                markerangle = googleMap?.addMarker(
+                    MarkerOptions()
+                        .icon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)))
+                        .position(aatlatLng)
+                        .anchor(0.5F,0.5F)
+                )
+                markerangle?.tag = "manualanlge"
+            }
+            else {
+                if (changeicon == 0) {
+                    markerangle!!.setIcon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_red,custommapzoom_scale)))
+                }
+                else if (changeicon == 1) {
+                    markerangle!!.setIcon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)))
+                }
+            }
+
+        }
+    }
+
+    private fun removemanualanglemarker() {
+        markerangle!!.remove()
+        markerangle = null
+    }
     
     // RF 에서 드론 좌표값 변경시 마다 드론 이미지 및 AAT 이미지 갱신
     private fun movemarker(dronelatitude: Double, dronelongitude: Double, dronealt : Double, aatlatitude: Double, aatlongitude: Double, aatalt : Double){
@@ -1010,6 +1097,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     .title("Drone")
                     .snippet(dronestatus)
             )
+            markerDrone?.tag = "markerDrone"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
             markerDrone!!.position = dronelatLng
@@ -1030,6 +1118,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     .title("Antenna")
                     .snippet(aatstatus)
             )
+            markeranternna?.tag = "markeranternna"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
             markeranternna!!.position = aatlatLng
@@ -1165,6 +1254,20 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             addMarker(LatLng(lat,lng))
         }
         addMarker(markerList[0].position)
+    }
+
+    fun bearingBetweenPoints(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Int {
+        val φ1 = Math.toRadians(lat1)
+        val φ2 = Math.toRadians(lat2)
+        val Δλ = Math.toRadians(lon2 - lon1)
+
+        val y = sin(Δλ) * cos(φ2)
+        val x = cos(φ1) * sin(φ2) - sin(φ1) * cos(φ2) * cos(Δλ)
+        var θ = Math.toDegrees(atan2(y, x))
+
+        // 0~360도로 변환
+        if (θ < 0) θ += 360.0
+        return θ.toInt()
     }
 
     // USB 리시버
@@ -1529,10 +1632,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             //updateLogView("sendStopREQ",bytesToHex(stopREQ))
             if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(stopREQ))
             Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(stopREQ))
+            manualanglemarker(AATlat,AATlong,0)
+            isManualAngle_touch = false
         } catch (e: IOException) {
             Log.e(dronelogv, "Error sending Send_AAT_CMD_REQ", e)
             throw e
         }
+
     }
 
     // RF 위도 경도 고도 AAT 전달
@@ -1806,8 +1912,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
             }
             else {
-                Send_AAT_CMD_REQ_Manual_Angle(ManualAngle)
-                binding.BTManualAngle.isInvisible = true
+                //Send_AAT_CMD_REQ_Manual_Angle(ManualAngle)
             }
             Log.d(dronelogv, "Send Drone_Loc_Req from APP")
 
@@ -1816,12 +1921,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             Log.d(dronelogv, "AAT_CMD_IND packet " + bytesToHex(buffer))
             val value = bytesToHex(buffer,10,2)
             Log.d(dronelogv, "AAT_CMD_IND AAT Status packet " + value)
-
-            isManualAngle = false
-            binding.BTManualAngle.isInvisible = false
             CMD_REQ_SW = false
-            if(!isManualAngle) {
-                Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
+            if(isManualAngle) {
+                AATrssi = byteToInt(buffer[12])
+                val tiltandRSSI = String.format("- / " + AATrssi.toString())
+                updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),"-",tiltandRSSI,"ManualAngle")
+                isManualAngle_touch = true
+                manualanglemarker(AATlat,AATlong,1)
             }
             if(!Logchange) newupdateLogView("receive AAT_CMD_IND",bytesToHex(slicebuffer))
         }
