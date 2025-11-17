@@ -20,6 +20,9 @@ class TestCmdreqDialog(context: Context,private val listener: (Int) -> Unit) : D
         val btn_cmdreq_07 = findViewById<Button>(R.id.btn_cmdreq_07)
         val btn_cmdreq_08 = findViewById<Button>(R.id.btn_cmdreq_08)
         val btn_cmdreq_09 = findViewById<Button>(R.id.btn_cmdreq_09)
+        val btn_cmdreq_10 = findViewById<Button>(R.id.btn_cmdreq_10)
+        val btn_cmdreq_11 = findViewById<Button>(R.id.btn_cmdreq_11)
+        val btn_cmdreq_12 = findViewById<Button>(R.id.btn_cmdreq_12)
 
         btn_cmdreq_01.setOnClickListener {
             listener(1)
@@ -55,6 +58,18 @@ class TestCmdreqDialog(context: Context,private val listener: (Int) -> Unit) : D
         }
         btn_cmdreq_09.setOnClickListener {
             listener(9)
+            dismiss()
+        }
+        btn_cmdreq_10.setOnClickListener {
+            listener(10)
+            dismiss()
+        }
+        btn_cmdreq_11.setOnClickListener {
+            listener(11)
+            dismiss()
+        }
+        btn_cmdreq_12.setOnClickListener {
+            listener(12)
             dismiss()
         }
     }

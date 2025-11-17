@@ -25,6 +25,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.util.TypedValue
@@ -143,16 +144,34 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         byteArrayOf(0xD0.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte()) // APP ID
     // AAT_CMD_REQ 정의
     private val CMD_Command_SYNC: ByteArray =
-        byteArrayOf(0x00.toByte(), 0x00.toByte()) // STNC
+        byteArrayOf(0x00.toByte(), 0x00.toByte())
 
-    private val CMD_Command_AAT_Init_test: ByteArray =
-        byteArrayOf(0xA1.toByte(), 0x00.toByte()) // AAT Inti test
+    private val CMD_Command_AAT_Init: ByteArray =
+        byteArrayOf(0x0A.toByte(), 0x01.toByte())
 
-    private val CMD_Command_AAT_Reset: ByteArray =
-        byteArrayOf(0xA2.toByte(), 0x00.toByte()) // AAT ID
+    private val CMD_Command_AAT_Restart: ByteArray =
+        byteArrayOf(0x0A.toByte(), 0x02.toByte())
 
-    private val CMD_Command_Set_arm_upright: ByteArray =
-        byteArrayOf(0xB1.toByte(), 0x00.toByte()) // Set_arm_upright
+    private val CMD_Command_Upright_the_antenna_pod: ByteArray =
+        byteArrayOf(0xC0.toByte(), 0x01.toByte())
+
+    private val CMD_Command_Down_the_Antenna_pod_horizotal: ByteArray =
+        byteArrayOf(0xC0.toByte(), 0x02.toByte()) // AAT Inti test
+
+    private val CMD_Command_Send_current_yaw: ByteArray =
+        byteArrayOf(0xC1.toByte(), 0x00.toByte()) // AAT Inti test
+
+    private val CMD_Command_send_current_tilt: ByteArray =
+        byteArrayOf(0xC1.toByte(), 0x01.toByte()) // AAT Inti test
+
+    private val CMD_Command_Radio_ON: ByteArray =
+        byteArrayOf(0xD0.toByte(), 0x00.toByte()) // AAT Inti test
+
+    private val CMD_Command_Send_radio_signal_strength: ByteArray =
+        byteArrayOf(0xD0.toByte(), 0x01.toByte()) // AAT Inti test
+
+    private val CMD_Command_Stop_radio: ByteArray =
+        byteArrayOf(0xD0.toByte(), 0x02.toByte()) // AAT Inti test
 
 
     // map 변수 선언
@@ -506,17 +525,44 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             val testcmddialog = TestCmdreqDialog(this) {
                     index ->
                 Toast.makeText(this, " CMDREQ SELETE BTN : " + index.toString(), Toast.LENGTH_SHORT).show()
-                when (index) {
-                    1 -> sendCMDREQ("SYNC",CMD_Command_SYNC)
-                    2 -> sendCMDREQ("AAT_Init",CMD_Command_AAT_Init_test)
-                    3 -> sendCMDREQ("TEST03",CMD_Command_AAT_Init_test)
-                    4 -> sendCMDREQ("TEST04",CMD_Command_AAT_Init_test)
-                    5 -> sendCMDREQ("TEST05",CMD_Command_AAT_Init_test)
-                    6 -> sendCMDREQ("TEST06",CMD_Command_AAT_Init_test)
-                    7 -> sendCMDREQ("TEST07",CMD_Command_AAT_Init_test)
-                    8 -> sendCMDREQ("TEST08",CMD_Command_AAT_Init_test)
-                    9 -> sendCMDREQ("TEST09",CMD_Command_AAT_Init_test)
+                if(isManualAngle){
+                    when (index) {
+                        1 -> sendCMDREQ("SYNC",CMD_Command_SYNC)
+                        2 -> sendCMDREQ("AAT_Init",CMD_Command_AAT_Init)
+                        3 -> sendCMDREQ("AAT_Restart",CMD_Command_AAT_Restart)
+                        4 -> {
+                            showNumberInputDialog(
+                                title = "Yaw 값 입력",
+                                message = "0 ~ 359 사이의 각도를 입력하세요."
+                            ) { value ->
+                                // TODO: value를 실제 프로토콜에 맞게 사용
+                                // 예시: sendCMDREQ("Make_yaw", makeYawCommand(value))
+                                //sendCMDREQ("Make_yaw", CMD_Command_Make_yaw(value))
+                                Send_AAT_CMD_REQ_Manual_Angle(value)
+                            }
+                        }
+                        5 -> {
+                            showNumberInputDialog(
+                                title = "Tilt 값 입력",
+                                message = "0 ~ 90 사이의 각도를 입력하세요."
+                            ) { value ->
+                                // TODO: value를 실제 프로토콜에 맞게 사용
+                                Send_AAT_CMD_REQ_Manual_Angle_tilt(value)
+                            }
+                        }
+                        6 -> sendCMDREQ("Upright_the_antenna_pod",CMD_Command_Upright_the_antenna_pod)
+                        7 -> sendCMDREQ("Down_the_Antenna_pod_horizotal",CMD_Command_Down_the_Antenna_pod_horizotal)
+                        8 -> sendCMDREQ("Send_current_yaw",CMD_Command_Send_current_yaw)
+                        9 -> sendCMDREQ("Send_current_tilt",CMD_Command_send_current_tilt)
+                        10 -> sendCMDREQ("Radio_ON",CMD_Command_Radio_ON)
+                        11 -> sendCMDREQ("Send_radio_signal_strength",CMD_Command_Send_radio_signal_strength)
+                        12 -> sendCMDREQ("Stop_radio",CMD_Command_Stop_radio)
+                    }
                 }
+                else {
+                    Toast.makeText(this, " NO Connect AAT !!", Toast.LENGTH_SHORT).show()
+                }
+
             }
             testcmddialog.show()
         }
@@ -1641,6 +1687,42 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     }
 
+    @Throws(IOException::class)
+    private fun Send_AAT_CMD_REQ_Manual_Angle_tilt(angle : Int) {
+        // AAT 전달용 StopREQ 생성
+        val stopREQ = ByteArray(10)
+        stopREQ[0] = 0xAA.toByte() // STX
+        stopREQ[1] = 0x06.toByte() // LEN
+        memcpy(stopREQ, 2, AAT_ID, 0, 4) // App_ID
+        if(isManualAngle){
+            require(angle in 0..90) { "angle must be 0..90, but was $angle" }
+
+            val value = 0xB200 or (angle and 0x0FFF) // 상위 nibble B, 하위 12비트에 angle
+            stopREQ[6] = ((value ushr 8) and 0xFF).toByte()
+            stopREQ[7] = (value and 0xFF).toByte()
+        }
+        else {
+            stopREQ[6] = 0x00.toByte() // command
+            stopREQ[7] = 0x00.toByte() // command
+        }
+        stopREQ[8] = 0xFF.toByte() // Checksum
+        stopREQ[9] = 0x55.toByte() // ETX
+
+        // StopREQ protocol 전달
+        try {
+            outputStream!!.write(stopREQ)
+            //updateLogView("sendStopREQ",bytesToHex(stopREQ))
+            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(stopREQ))
+            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(stopREQ))
+            manualanglemarker(AATlat,AATlong,0)
+            isManualAngle_touch = false
+        } catch (e: IOException) {
+            Log.e(dronelogv, "Error sending Send_AAT_CMD_REQ", e)
+            throw e
+        }
+
+    }
+
     // RF 위도 경도 고도 AAT 전달
     private fun Send_Drone_LOC_IND(drone_lat: Double, drone_long: Double, drone_alt: Double) {
         // Example GPS data
@@ -2114,6 +2196,34 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val isYawValid = yaw in -360.0..360.0
 
         return isLatValid && isLonValid && isAltValid && isYawValid
+    }
+
+    private fun showNumberInputDialog(
+        title: String,
+        message: String,
+        onOk: (Int) -> Unit
+    ) {
+        val editText = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            hint = "숫자를 입력하세요"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setView(editText)
+            .setPositiveButton("확인") { _, _ ->
+                val text = editText.text.toString()
+                val value = text.toIntOrNull()
+
+                if (value == null) {
+                    Toast.makeText(this, "숫자를 입력해 주세요.", Toast.LENGTH_SHORT).show()
+                } else {
+                    onOk(value)
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     // 외부 저장소 추가

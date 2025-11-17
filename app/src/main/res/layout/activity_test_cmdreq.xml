@@ -14,21 +14,21 @@
 
         <Button
             android:id="@+id/btn_cmdreq_01"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="SYNC_OK" />
 
         <Button
             android:id="@+id/btn_cmdreq_02"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="AAT Init" />
 
         <Button
             android:id="@+id/btn_cmdreq_03"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="AAT Restart" />
@@ -42,24 +42,24 @@
 
         <Button
             android:id="@+id/btn_cmdreq_04"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Make Tilt" />
+            android:text="Make yaw"/>
 
         <Button
             android:id="@+id/btn_cmdreq_05"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Upright The Antenna Pod" />
+            android:text="Make Tilt"/>
 
         <Button
             android:id="@+id/btn_cmdreq_06"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Down The Antenna Pod Horizotal" />
+            android:text="Upright The Antenna Pod" />
 
     </LinearLayout>
 
@@ -70,24 +70,57 @@
 
         <Button
             android:id="@+id/btn_cmdreq_07"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Down The Antenna Pod Horizotal" />
+
+
+        <Button
+            android:id="@+id/btn_cmdreq_08"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Send Current Yaw" />
 
+
         <Button
-            android:id="@+id/btn_cmdreq_08"
-            android:layout_width="wrap_content"
+            android:id="@+id/btn_cmdreq_09"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Send Current Tilt" />
 
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+
         <Button
-            android:id="@+id/btn_cmdreq_09"
-            android:layout_width="wrap_content"
+            android:id="@+id/btn_cmdreq_10"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Radio ON" />
+
+
+        <Button
+            android:id="@+id/btn_cmdreq_11"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Send radio signal strength" />
+
+
+        <Button
+            android:id="@+id/btn_cmdreq_12"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop ratio" />
 
     </LinearLayout>
 </LinearLayout>
