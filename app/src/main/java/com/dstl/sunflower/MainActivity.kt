@@ -82,6 +82,7 @@ import mavlink.UsbHelper
 import mavlink.UsbSerialOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileWriter
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -123,7 +124,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
 
     // Bluetooth 선언
-
+    var BluetoothMessage : String = "Bluetooth Message"
     private var bluetoothAdapter: BluetoothAdapter? = null // 블루투스 어댑터
     private var bluetoothDevice: BluetoothDevice? = null // 블루투스 디바이스 목록
     private var devices: Set<BluetoothDevice>? = null // 블루투스 디바이스 데이터 셋
@@ -136,6 +137,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private var handler = Handler(Looper.getMainLooper()) // 블루투스 메세지용 핸들러
 
     private var btn_bt_status = 0
+
+    // 수신 스레드 제어용
+    private var listenThread: Thread? = null
+    @Volatile
+    private var isListening: Boolean = false
+
+
+    companion object {
+        // SPP 기본 UUID
+        val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+        private var logWriter: FileWriter? = null
+    }
 
     // AAT 통신 변수 선언
     private val App_ID: ByteArray =
@@ -278,6 +291,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var isManualAngle_touch = false
     var ManualAngle = 0
 
+    // Log tample
+
+    private val BluetoothLog : String = "BluetoothLog"
+    private val DroneLog : String = "DroneLog"
+    private val ApplcationLog : String = "ApplcationLog"
+    private val AATLog : String = "AATLog"
+
     // lifecycle
     override fun onStart() {
         super.onStart()
@@ -354,6 +374,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     this.onDeviceSelected(
                         device!!
                     )
+                    Logger.writeLog(DroneLog,"Drone Connect")
                 }
             }
             else if(btn_usb_status == 1) {
@@ -403,6 +424,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             if(btn_bt_status == 0) {
                 if (bluetoothAdapter!!.isEnabled) { // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
                     selectBluetoothDevice() // 블루투스 디바이스 선택 함수 호출
+                }
+                else {
+                    Toast.makeText(this, "블루투스를 활성화 해주세요", Toast.LENGTH_SHORT).show()
                 }
             }
             else if(btn_bt_status == 1) {
@@ -1345,17 +1369,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     //handleBluetoothDevice(intent)
                     bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
                     if (bluetoothAdapter == null) { // 디바이스가 블루투스를 지원하지 않을 때
-                        Toast.makeText(applicationContext, "블루투스 미지원 기기입니다.", Toast.LENGTH_LONG)
-                            .show()
+                        Toast.makeText(applicationContext, "블루투스 미지원 기기입니다.", Toast.LENGTH_LONG).show()
                     } else { // 디바이스가 블루투스를 지원 할 때
 
-                        if (bluetoothAdapter!!.isEnabled) { // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
+                        if (bluetoothAdapter!!.isEnabled) {
+                            // 블루투스가 활성화 상태 (기기에 블루투스가 켜져있음)
                         } else { // 블루투스가 비 활성화 상태 (기기에 블루투스가 꺼져있음)
-
                             // 블루투스를 활성화 하기 위한 다이얼로그 출력
                             // 선택한 값이 onActivityResult 함수에서 콜백
-                            startActivityForResult(intent, 1)
+                            //startActivityForResult(intent, 1)
+                            //Toast.makeText(applicationContext, "블루투스를 켜주세요.", Toast.LENGTH_LONG).show()
                         }
+
                     }
                 }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
@@ -1365,7 +1390,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
     }
 
-    // 시리얼 포트 연결 시도
+/*    // 시리얼 포트 연결 시도
     private fun tryConnectToSerial() {
         try {
             CoroutineScope(Dispatchers.IO).launch {
@@ -1377,7 +1402,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
+    }*/
 
     // 시리얼 포트 연결 이후 디바이스 오픈 및 최초 통신 진행
     private fun onDeviceSelected(device: UsbDevice) {
@@ -1401,7 +1426,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                                 e.printStackTrace()
                             }
                         }
-
+                        Logger.writeLog(DroneLog,"Drone Mavlink Data Start!")
                         val mavlinkConnection =
                             MavlinkConnection.create(pipedIn, UsbSerialOutputStream(serialDevice)) // Mavlink 선언
                         mavlinkDataProcessor = MavlinkDataProcessor(mavlinkConnection) // Mavlink Connect 실행
@@ -1538,6 +1563,89 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     private fun connectBluetooth(deviceName: String) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        // 이름으로 디바이스 찾기
+        val targetDevice = devices?.firstOrNull { it.name == deviceName }
+        if (targetDevice == null) {
+            Toast.makeText(this, "선택한 디바이스를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 이전 연결/수신 정리
+        disconnectBluetooth()
+
+        Thread {
+            try {
+                Log.d(dronelogv, "connectBluetooth: connecting to $deviceName")
+                val socket = targetDevice.createRfcommSocketToServiceRecord(SPP_UUID)
+                bluetoothAdapter?.cancelDiscovery()
+
+                socket.connect() // 여기서 블록
+
+                // 연결 성공
+                bluetoothSocket = socket
+                inputStream = socket.inputStream
+                outputStream = bluetoothSocket!!.outputStream
+                BT_connect_Set = true
+
+                runOnUiThread {
+                    Logger.writeLog(BluetoothLog,"connectBluetooth: connecting to $deviceName")
+                    newupdateLogView(BluetoothMessage,"connectBluetooth: connecting to $deviceName")
+                    Toast.makeText(this, "$deviceName 연결됨", Toast.LENGTH_SHORT).show()
+                    change_btn_con_aat_icon(2) // 연결/통신중 아이콘
+                }
+
+                // ✅ 연결된 상태에서만 수신 스레드 시작
+                startListeningForMessages()
+
+            } catch (e: Exception) {
+                Log.e(dronelogv, "connectBluetooth: 연결 실패", e)
+                runOnUiThread {
+                    Logger.writeLog(BluetoothLog,"connectBluetooth: 연결 실패")
+                    newupdateLogView(BluetoothMessage,"connectBluetooth: 연결 실패")
+                    Toast.makeText(this, "연결 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                    change_btn_con_aat_icon(0) // 끊김/미연결 아이콘
+                    change_btn_con_manual_icon(0)
+                }
+
+                disconnectBluetooth()
+            }
+        }.start()
+    }
+
+    fun disconnectBluetooth() {
+        //Log.d(dronelogv, "disconnectBluetooth")
+        //Toast.makeText(this, "disconnectBluetooth", Toast.LENGTH_SHORT).show()
+        Logger.writeLog(BluetoothLog,"disconnectBluetooth")
+        newupdateLogView(BluetoothMessage,"disconnectBluetooth")
+        stopListeningForMessages()
+
+        try {
+            inputStream?.close()
+        } catch (_: Exception) { }
+        inputStream = null
+
+        try {
+            bluetoothSocket?.close()
+        } catch (_: Exception) { }
+        bluetoothSocket = null
+
+        BT_connect_Set = false
+
+        runOnUiThread {
+            change_btn_con_aat_icon(0) // 미연결/끊김 아이콘
+            change_btn_con_manual_icon(0)
+        }
+    }
+
+/*    private fun connectBluetooth(deviceName: String) {
         // 페어링 된 디바이스들을 모두 탐색
 
         for (tempDevice in devices!!) {
@@ -1577,7 +1685,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             Log.e(ContentValues.TAG, "Bluetooth connection failed", e)
             Toast.makeText(this, bluetoothDevice.toString() + " Bluetooth connection failed", Toast.LENGTH_SHORT).show()
         }
-    }
+    }*/
 
     // AAT StartREQ 전달 문
     @Throws(IOException::class)
@@ -1595,6 +1703,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         try {
             outputStream!!.write(startREQ)
             //updateLogView("sendStartREQ",bytesToHex(startREQ))
+            Logger.writeLog(AATLog,"sendStartREQ : "+bytesToHex(startREQ))
             if(!Logchange) newupdateLogView("sendStartREQ",bytesToHex(startREQ))
             //Log.d(dronelogv, "Sent StartREQ - " + bytesToHex(startREQ))
         } catch (e: IOException) {
@@ -1619,6 +1728,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         try {
             outputStream!!.write(stopREQ)
             //updateLogView("sendStopREQ",bytesToHex(stopREQ))
+            Logger.writeLog(AATLog,"sendStopREQ : "+bytesToHex(stopREQ))
             if(!Logchange) newupdateLogView("sendStopREQ",bytesToHex(stopREQ))
             Log.d(dronelogv, "Sent StopREQ - " + bytesToHex(stopREQ))
         } catch (e: IOException) {
@@ -1644,6 +1754,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             outputStream!!.write(CMDREQ)
             if(!Logchange) newupdateLogView("sendCMDREQ_"+SendCMDREQ_MSG,bytesToHex(CMDREQ))
             Log.d(dronelogv, "Sent sendCMDREQ - " + bytesToHex(CMDREQ))
+            Logger.writeLog(AATLog,"sendCMDREQ : "+bytesToHex(CMDREQ))
             CMD_REQ_SW = true
         } catch (e: IOException) {
             Log.e(dronelogv, "Error sending sendCMDREQ", e)
@@ -1654,30 +1765,31 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     @Throws(IOException::class)
     private fun Send_AAT_CMD_REQ_Manual_Angle(angle : Int) {
         // AAT 전달용 StopREQ 생성
-        val stopREQ = ByteArray(10)
-        stopREQ[0] = 0xAA.toByte() // STX
-        stopREQ[1] = 0x06.toByte() // LEN
-        memcpy(stopREQ, 2, AAT_ID, 0, 4) // App_ID
+        val AAT_CMD_REQ = ByteArray(10)
+        AAT_CMD_REQ[0] = 0xAA.toByte() // STX
+        AAT_CMD_REQ[1] = 0x06.toByte() // LEN
+        memcpy(AAT_CMD_REQ, 2, AAT_ID, 0, 4) // App_ID
         if(isManualAngle){
             require(angle in 0..359) { "angle must be 0..359, but was $angle" }
 
             val value = 0xB000 or (angle and 0x0FFF) // 상위 nibble B, 하위 12비트에 angle
-            stopREQ[6] = ((value ushr 8) and 0xFF).toByte()
-            stopREQ[7] = (value and 0xFF).toByte()
+            AAT_CMD_REQ[6] = ((value ushr 8) and 0xFF).toByte()
+            AAT_CMD_REQ[7] = (value and 0xFF).toByte()
         }
         else {
-            stopREQ[6] = 0x00.toByte() // command
-            stopREQ[7] = 0x00.toByte() // command
+            AAT_CMD_REQ[6] = 0x00.toByte() // command
+            AAT_CMD_REQ[7] = 0x00.toByte() // command
         }
-        stopREQ[8] = 0xFF.toByte() // Checksum
-        stopREQ[9] = 0x55.toByte() // ETX
+        AAT_CMD_REQ[8] = 0xFF.toByte() // Checksum
+        AAT_CMD_REQ[9] = 0x55.toByte() // ETX
 
         // StopREQ protocol 전달
         try {
-            outputStream!!.write(stopREQ)
+            outputStream!!.write(AAT_CMD_REQ)
             //updateLogView("sendStopREQ",bytesToHex(stopREQ))
-            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(stopREQ))
-            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(stopREQ))
+            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(AAT_CMD_REQ))
+            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(AAT_CMD_REQ))
+            Logger.writeLog(AATLog,"Send_AAT_CMD_REQ - Manual_Angle : "+bytesToHex(AAT_CMD_REQ))
             manualanglemarker(AATlat,AATlong,0)
             isManualAngle_touch = false
         } catch (e: IOException) {
@@ -1690,30 +1802,31 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     @Throws(IOException::class)
     private fun Send_AAT_CMD_REQ_Manual_Angle_tilt(angle : Int) {
         // AAT 전달용 StopREQ 생성
-        val stopREQ = ByteArray(10)
-        stopREQ[0] = 0xAA.toByte() // STX
-        stopREQ[1] = 0x06.toByte() // LEN
-        memcpy(stopREQ, 2, AAT_ID, 0, 4) // App_ID
+        val AAT_CMD_REQ = ByteArray(10)
+        AAT_CMD_REQ[0] = 0xAA.toByte() // STX
+        AAT_CMD_REQ[1] = 0x06.toByte() // LEN
+        memcpy(AAT_CMD_REQ, 2, AAT_ID, 0, 4) // App_ID
         if(isManualAngle){
             require(angle in 0..90) { "angle must be 0..90, but was $angle" }
 
             val value = 0xB200 or (angle and 0x0FFF) // 상위 nibble B, 하위 12비트에 angle
-            stopREQ[6] = ((value ushr 8) and 0xFF).toByte()
-            stopREQ[7] = (value and 0xFF).toByte()
+            AAT_CMD_REQ[6] = ((value ushr 8) and 0xFF).toByte()
+            AAT_CMD_REQ[7] = (value and 0xFF).toByte()
         }
         else {
-            stopREQ[6] = 0x00.toByte() // command
-            stopREQ[7] = 0x00.toByte() // command
+            AAT_CMD_REQ[6] = 0x00.toByte() // command
+            AAT_CMD_REQ[7] = 0x00.toByte() // command
         }
-        stopREQ[8] = 0xFF.toByte() // Checksum
-        stopREQ[9] = 0x55.toByte() // ETX
+        AAT_CMD_REQ[8] = 0xFF.toByte() // Checksum
+        AAT_CMD_REQ[9] = 0x55.toByte() // ETX
 
         // StopREQ protocol 전달
         try {
-            outputStream!!.write(stopREQ)
+            outputStream!!.write(AAT_CMD_REQ)
             //updateLogView("sendStopREQ",bytesToHex(stopREQ))
-            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(stopREQ))
-            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(stopREQ))
+            if(!Logchange) newupdateLogView("Send_AAT_CMD_REQ",bytesToHex(AAT_CMD_REQ))
+            Log.d(dronelogv, "Sent Send_AAT_CMD_REQ - " + bytesToHex(AAT_CMD_REQ))
+            Logger.writeLog(AATLog,"Send_AAT_CMD_REQ - Manual_Angle_tilt : "+bytesToHex(AAT_CMD_REQ))
             manualanglemarker(AATlat,AATlong,0)
             isManualAngle_touch = false
         } catch (e: IOException) {
@@ -1791,13 +1904,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 dronelogv,
                 "Send_Drone_LOC_IND / Count : " + CountSendDroneLOC_IND.toString() + " / GPSupdatecount : " + CountSendDroneLOC_gps.toString() + " / LatInt = " + droneLatitudeIntPart + " / LatFrac = " + droneLatitudeFracPart + " / LonInt = " + droneLongitudeIntPart + " / LonFrac = " + droneLongitudeFracPart
             )
+            Logger.writeLog(AATLog,"Send_Drone_LOC_IND : "+bytesToHex(gpsData))
         } catch (e: IOException) {
             e.printStackTrace()
             Log.e(dronelogv, "Error sending Send_Drone_LOC_IND", e)
         }
     }
 
-    // Bluetooth 메시지 확인용 thread
+/*    // Bluetooth 메시지 확인용 thread
     private fun startListeningForMessages2() {
         Log.d(ContentValues.TAG, "Start startListeningForMessages")
         Thread {
@@ -1819,10 +1933,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
         }.start()
         change_btn_con_aat_icon(2)
-    }
+    }*/
 
     // Bluetooth 메시지 확인용 thread
-    private fun startListeningForMessages() {
+/*    private fun startListeningForMessages() {
         Log.d(ContentValues.TAG, "Start startListeningForMessages")
 
         Thread {
@@ -1894,6 +2008,137 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }.start()
 
         change_btn_con_aat_icon(2)
+    }*/
+
+    fun startListeningForMessages() {
+        Log.d(dronelogv, "Start startListeningForMessages")
+        Logger.writeLog(AATLog,"Start startListeningForMessages")
+
+        // 이미 리스닝 중이면 중복 방지
+        if (isListening) {
+            Log.d(dronelogv, "Already listening, skip start")
+            return
+        }
+
+        val stream = inputStream
+        if (stream == null) {
+            Log.e(dronelogv, "inputStream is null, cannot start listening")
+            return
+        }
+
+        isListening = true
+
+        listenThread = Thread {
+            try {
+                val START_BYTE: Byte = 0xAA.toByte()
+                val END_BYTE: Byte = 0x55.toByte()
+
+                var state = 0 // 0: 대기, 1: 길이 수신, 2: 데이터 수신
+                var expectedLength = 0
+                val packetBuffer = mutableListOf<Byte>()
+
+                while (isListening) {
+                    val byte = try {
+                        stream.read()
+                    } catch (e: Exception) {
+                        Logger.writeLog(AATLog,"AAT Stream read error")
+                        Log.e(dronelogv, "Stream read error", e)
+                        break
+                    }
+
+                    if (!isListening) break
+
+                    if (byte == -1) {
+                        Logger.writeLog(AATLog,"AAT Stream closed by remote device")
+                        Log.e(dronelogv, "Stream closed by remote device")
+                        break
+                    }
+
+                    val receivedByte = byte.toByte()
+
+                    when (state) {
+                        0 -> {
+                            if (receivedByte == START_BYTE) {
+                                packetBuffer.clear()
+                                packetBuffer.add(receivedByte)
+                                state = 1
+                            }
+                        }
+
+                        1 -> {
+                            expectedLength = receivedByte.toUByte().toInt()
+                            packetBuffer.add(receivedByte)
+                            state = 2
+                        }
+
+                        2 -> {
+                            packetBuffer.add(receivedByte)
+                            val totalLength = 1 + 1 + expectedLength + 1 + 1 // START + LEN + DATA + CHECKSUM + END
+
+                            if (packetBuffer.size == totalLength) {
+                                val checksumIndex = packetBuffer.size - 2
+                                val endByte = packetBuffer.last()
+                                val receivedChecksum = packetBuffer[checksumIndex]
+
+                                // TODO: 실제 체크섬 계산 로직으로 교체
+                                val calculatedChecksum = 0x00.toByte()
+
+                                if (endByte == END_BYTE && receivedChecksum == calculatedChecksum) {
+                                    val packet = packetBuffer.toByteArray()
+                                    if (isListening) {
+                                        handler.post {
+                                            try {
+                                                receiveREQ(packet)
+                                            } catch (e: NullPointerException) {
+                                                Log.e(dronelogv, "NPE in receiveREQ", e)
+                                            } catch (e: Exception) {
+                                                Log.e(dronelogv, "Exception in receiveREQ", e)
+                                            }
+                                        }
+                                        /*handler.post {
+                                            receiveREQ(packet)
+                                        }*/
+                                    }
+                                } else {
+                                    Logger.writeLog(AATLog,"AAT Invalid packet - checksum or end byte mismatch")
+                                    Log.w(dronelogv, "Invalid packet - checksum or end byte mismatch")
+                                }
+
+                                state = 0
+                                packetBuffer.clear()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(dronelogv, "Bluetooth read error", e)
+            } finally {
+                isListening = false
+                BT_connect_Set = false
+                Log.d(dronelogv, "Listening thread finished")
+                runOnUiThread {
+                    Logger.writeLog(AATLog,"AAT Listening thread finished")
+                    newupdateLogView(BluetoothMessage,"Listening thread finished")
+                    Toast.makeText(this, "Listening thread finished", Toast.LENGTH_SHORT).show()
+                    change_btn_con_aat_icon(0) // 끊김 상태 아이콘
+                }
+            }
+        }.apply {
+            start()
+        }
+    }
+
+    fun stopListeningForMessages() {
+        Log.d(dronelogv, "Stop listening requested")
+        Logger.writeLog(AATLog,"AAT Stop Listening thread")
+        newupdateLogView(BluetoothMessage,"AAT Stop Listening thread")
+        isListening = false
+
+        try {
+            listenThread?.interrupt()
+        } catch (_: Exception) { }
+
+        listenThread = null
     }
 
     // AAT REQ 데이터 확인용 함수
@@ -1903,6 +2148,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         //val slicebuffer = buffer.copyOfRange(0,50)
         val slicebuffer = if (endIndex != -1 && buffer[endIndex-1] == 0x00.toByte()) buffer.copyOfRange(0,endIndex+1) else buffer
         if(buffer[0] == 0xAA.toByte() && buffer[1] == 0x08.toByte() && buffer[10] == 0x00.toByte()) { //AAT_Ready_Brdcst
+            Logger.writeLog(AATLog,"AAT Send - AAT_Ready_Brdcst : "+bytesToHex(slicebuffer))
             Log.d(ContentValues.TAG, "Receive AAT_Ready_Brdcst from AAT")
             AAT_ID = byteArrayOf(buffer[2],buffer[3],buffer[4],buffer[5])
             sendStartREQ()
@@ -1956,7 +2202,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 0xD1.toByte() -> statusStr = "target GPS not available"
                 0xD2.toByte() -> statusStr = "target antenna tracking unavailable"
             }
-
+            Logger.writeLog(AATLog,"AAT Send - Drone_LOC_REQ / " + "status > "+ statusStr +" : " +bytesToHex(slicebuffer))
             updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),tiltandRSSI,statusStr)
             //updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),intyawValue.toString(),inttiltValue.toString(),statusStr)
             //Log.d(dronelogv, "receiveREQ AAT ID: " + bytesToHex(AAT_REQ_ID))
@@ -1976,9 +2222,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             var aatdatafm = String.format("Lat : %f , Long : %f , Alt : %.2f , Yaw : %.2f / Total : %d , Truecount : %d, Failcount : %d, Error rate :  : %d ",
                 AATlat,AATlong,AATalt,AATYaw,aat_data_true_count+aat_data_fail_count,aat_data_true_count,aat_data_fail_count,aat_error_rate)
 
-            if(Logchange) newupdateLogView("V&V_AATdata",aatdatafm)
+            //if(Logchange) newupdateLogView("V&V_AATdata",aatdatafm)
 
-            if(!Logchange) newupdateLogView("receive Drone_LOC_REQ",bytesToHex(slicebuffer))
+            //if(!Logchange) newupdateLogView("receive Drone_LOC_REQ",bytesToHex(slicebuffer))
 
             //AAT_Latitude = aatLatIntPart + (aatLatFracPart / 1e7)
             //AAT_Longitude = aatLonIntPart + (aatLonFracPart / 1e7)
@@ -2008,6 +2254,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 AATrssi = byteToInt(buffer[12])
                 val tiltandRSSI = String.format("- / " + AATrssi.toString())
                 updateaatLogview(AATlat.toString(),AATlong.toString(),AATalt.toString(),"-",tiltandRSSI,"ManualAngle")
+                Logger.writeLog(AATLog,"AAT Send - AAT_CMD_IND : " +bytesToHex(slicebuffer))
                 isManualAngle_touch = true
                 manualanglemarker(AATlat,AATlong,1)
             }
@@ -2017,6 +2264,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             // Handle stop acknowledgment
             stopCommunication()
             if(!Logchange) newupdateLogView("receive STOP_ACK",bytesToHex(slicebuffer))
+            Logger.writeLog(AATLog,"AAT Send - STOP_ACK : " +bytesToHex(slicebuffer))
         }
     }
 
@@ -2114,7 +2362,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // Messagebox
-    private fun updateLogView(send: String , message: String) {
+/*    private fun updateLogView(send: String , message: String) {
         CoroutineScope(Dispatchers.Main).launch {
             val lineCount = binding.tvLog.getLineCount()
             if (lineCount >= 200)
@@ -2130,7 +2378,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     binding.tvLog.scrollTo(0, 0)
             }
         }
-    }
+    }*/
 
     private fun newupdateLogView(send: String , message: String) {
         val maxline = 200
@@ -2273,3 +2521,4 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         isFilePrepared = true
     }
 }
+
