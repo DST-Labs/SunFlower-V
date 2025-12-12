@@ -53,4 +53,8 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     implementation("com.github.mik3y:usb-serial-for-android:3.8.0")
     implementation("com.github.felHR85:UsbSerial:6.0.6")     // UsbSerial 라이브러리
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }

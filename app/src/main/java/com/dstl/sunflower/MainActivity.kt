@@ -2,6 +2,7 @@ package com.dstl.sunflower
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
@@ -17,6 +18,7 @@ import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Typeface
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.location.Location
 import android.os.Build
@@ -50,6 +52,7 @@ import com.dstl.sunflower.databinding.ActivityMainBinding
 import com.example.connector.bluetooth.ControllerBT
 import com.example.connector.serial.ControllerSerial
 import com.felhr.usbserial.UsbSerialDevice
+import com.felhr.usbserial.UsbSerialInterface
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -121,6 +124,20 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private var mavlinkDataProcessor : MavlinkDataProcessor? = null // Mavlink 데이터 프로세스 (통신 프로토콜 라이브러리)
 
     private var btn_usb_status = 0
+    enum class UsbState {
+        DISCONNECTED,
+        WAITING,
+        CONNECTED
+    }
+    @Volatile
+    private var usbState = UsbState.DISCONNECTED
+    @Volatile
+
+    private var usbConnection: UsbDeviceConnection? = null
+    private var serialDevice: UsbSerialDevice? = null
+
+    private var pipedOut: PipedOutputStream? = null
+    private var pipedIn: PipedInputStream? = null
 
 
     // Bluetooth 선언
@@ -236,6 +253,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     var CMD_REQ_SW : Boolean = false // CMD REQ 프로토콜 실행 유무
     var testinfinity : Boolean = true
     var BT_connect_Set : Boolean = false // Bluetooth 연결 상태 확인
+    @Volatile
     var RF_connect_Set : Boolean = false // USB 연결 상태 확인
 
     private var dronepolyline: Polyline? = null // markerList 간 라인 설정
@@ -306,8 +324,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
             bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
         }
         registerReceiver(bluetoothReceiver, bluetoothFilter)
+        registerReceiver(usbAttachDetachReceiver, bluetoothFilter)
     }
 
     override fun onStop() {
@@ -317,6 +338,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             sendStopREQ()
         }
         unregisterReceiver(bluetoothReceiver)
+        unregisterReceiver(usbPermissionReceiver)
+        unregisterReceiver(usbAttachDetachReceiver)
     }
 
     @SuppressLint("SetTextI18n")
@@ -327,6 +350,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val view = binding.root
         setContentView(view)
         enableEdgeToEdge()
+
+        val token = getSharedPreferences("auth", MODE_PRIVATE)
+            .getString("token", null)
+
+        if (token == null) {
+            // 토큰 없으면 로그인 화면으로 되돌림
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -375,6 +408,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                         device!!
                     )
                     Logger.writeLog(DroneLog,"Drone Connect")
+                    newupdateLogView(DroneLog,"Drone Connect")
                 }
             }
             else if(btn_usb_status == 1) {
@@ -1341,6 +1375,103 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // USB 리시버
+
+    private val usbAttachDetachReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val device =
+                        intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+                    device?.let {
+                        Log.d("USB", "Device attached: ${it.deviceName}")
+                        usbState = UsbState.WAITING
+                        requestUsbPermission(it)
+                    }
+                }
+
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    val device =
+                        intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+                    Log.d("USB", "Device detached: ${device?.deviceName}")
+
+                    usbState = UsbState.DISCONNECTED
+                    stopUsbCommunication()
+                }
+            }
+        }
+    }
+    private val usbPermissionReceiver: BroadcastReceiver =
+        object : BroadcastReceiver() {
+
+            override fun onReceive(context: Context, intent: Intent) {
+                if (ACTION_USB_PERMISSION == intent.action) {
+                    synchronized(this) {
+                        val device =
+                            intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+
+                        if (intent.getBooleanExtra(
+                                UsbManager.EXTRA_PERMISSION_GRANTED,
+                                false
+                            )
+                        ) {
+                            device?.let {
+                                usbState = UsbState.CONNECTED
+                                onDeviceSelected(it)
+                            }
+                        } else {
+                            Log.d("USB", "Permission denied")
+                            usbState = UsbState.WAITING
+                        }
+                    }
+                }
+            }
+        }
+    private fun requestUsbPermission(device: UsbDevice) {
+        val permissionIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            Intent(ACTION_USB_PERMISSION),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        usbManager?.requestPermission(device, permissionIntent)
+    }
+
+    private fun stopUsbCommunication() {
+
+        RF_connect_Set = false
+
+        // 1) MAVLink 루프 종료 신호
+        mavlinkDataProcessor?.stop()
+        mavlinkDataProcessor = null
+
+        Logger.writeLog(DroneLog, "Drone USB stop connect!")
+        newupdateLogView(DroneLog,"Drone USB stop connect!")
+
+        // 2) 🔥 이게 핵심: next()를 깨운다
+        try { pipedIn?.close() } catch (_: Exception) {}
+        try { pipedOut?.close() } catch (_: Exception) {}
+        pipedIn = null
+        pipedOut = null
+
+        // 3) USB Serial 종료
+        try { serialDevice?.close() } catch (_: Exception) {}
+        serialDevice = null
+
+        try { usbConnection?.close() } catch (_: Exception) {}
+        usbConnection = null
+
+        change_btn_con_drone_icon(0)
+        binding.btnDroneConStatus.background = null
+        drone_center_is = false
+    }
+
+
+
+
+
+
+    /*
     private val usbPermissionReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action
@@ -1360,6 +1491,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
         }
     }
+    */
 
     // Bluetooth 리시버
     private val bluetoothReceiver = object : BroadcastReceiver() {
@@ -1404,7 +1536,91 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
     }*/
 
+    private fun onDeviceSelected(device: UsbDevice) {
+
+        stopUsbCommunication()
+
+        usbConnection = usbManager?.openDevice(device)
+        if (usbConnection == null) {
+            Logger.writeLog(DroneLog, "Failed to open USB device")
+            newupdateLogView(DroneLog,"Failed to open USB device")
+            Log.e("USB", "Failed to open USB device")
+            return
+        }
+
+        serialDevice = UsbSerialDevice.createUsbSerialDevice(device, usbConnection)
+        if (serialDevice == null) {
+            Logger.writeLog(DroneLog, "Failed to create serial device")
+            newupdateLogView(DroneLog,"Failed to create serial device")
+            Log.e("USB", "Failed to create serial device")
+            return
+        }
+
+        if (!serialDevice!!.open()) {
+            Logger.writeLog(DroneLog, "Failed to open serial port")
+            newupdateLogView(DroneLog,"Failed to open serial port")
+            Log.e("USB", "Failed to open serial port")
+            return
+        }
+
+        serialDevice!!.setBaudRate(USBBaudrate)
+        serialDevice!!.setDataBits(UsbSerialInterface.DATA_BITS_8)
+        serialDevice!!.setStopBits(UsbSerialInterface.STOP_BITS_1)
+        serialDevice!!.setParity(UsbSerialInterface.PARITY_NONE)
+        serialDevice!!.setFlowControl(UsbSerialInterface.FLOW_CONTROL_OFF)
+
+        RF_connect_Set = true
+
+        try {
+            pipedOut = PipedOutputStream()
+            pipedIn = PipedInputStream(pipedOut)
+
+            // 🔁 USB → Pipe
+            serialDevice!!.read { data ->
+                try {
+                    if (data != null && data.isNotEmpty()) {
+                        pipedOut?.write(data)
+                    }
+                } catch (e: IOException) {
+                    Log.e("USB", "Pipe write error", e)
+                }
+            }
+
+            Logger.writeLog(DroneLog, "Drone MAVLink Data Start!")
+            newupdateLogView(DroneLog,"Drone MAVLink Data Start!")
+
+            val mavlinkConnection = MavlinkConnection.create(
+                pipedIn,
+                UsbSerialOutputStream(serialDevice!!)
+            )
+
+            mavlinkDataProcessor = MavlinkDataProcessor(mavlinkConnection)
+
+            // MAVLink 요청
+            mavlinkDataProcessor!!.requestRawImuData(24)
+            mavlinkDataProcessor!!.requestRawImuData(27)
+
+            mavlinkDataProcessor!!.startMavlinkMessageListener { message ->
+                message?.let {
+                    processMAVLinkData(it)
+                }
+            }
+
+            change_btn_con_drone_icon(2)
+
+        } catch (e: IOException) {
+            Logger.writeLog(DroneLog, "USB init failed")
+            newupdateLogView(DroneLog,"Drone Connect")
+            Log.e("USB", "USB init failed", e)
+            stopUsbCommunication()
+        }
+    }
+
+
+
+
     // 시리얼 포트 연결 이후 디바이스 오픈 및 최초 통신 진행
+    /*
     private fun onDeviceSelected(device: UsbDevice) {
         val connection = usbManager!!.openDevice(device)
         if (connection != null) { // USB connect 가 실행되었다면
@@ -1446,6 +1662,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
         }
     }
+     */
 
     // Mavlink REQ 데이터 파싱 및 확인
     @SuppressLint("SetTextI18n")
