@@ -1,5 +1,6 @@
 package com.dstl.sunflower
 
+import CompassIcon
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
@@ -105,6 +106,10 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 
 class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, OnMarkerDragListener, GoogleApiClient.OnConnectionFailedListener,
     OnMapReadyCallback {
@@ -371,6 +376,23 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         // USB 메니저 선언
         usbManager = getSystemService(USB_SERVICE) as UsbManager
         usbHelper = UsbHelper(this, usbPermissionReceiver)
+
+        val cv = findViewById<ComposeView>(R.id.compassCompose)
+
+        cv.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+
+        cv.setContent {
+            MaterialTheme {
+                CompassIcon(
+                    iconSize = 100.dp,
+                    onClick = {
+                        // TODO: 클릭 시 상세 나침반 UI 열기(다이얼로그/BottomSheet 등)
+                    }
+                )
+            }
+        }
 
         // 로그 저장
 

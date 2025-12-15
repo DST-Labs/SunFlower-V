@@ -20,6 +20,7 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
+        ApiClient.init(this)
 
         idInput = findViewById(R.id.usernameEdit)
         pwInput = findViewById(R.id.passwordEdit)
