@@ -137,7 +137,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     @Volatile
     private var usbState = UsbState.DISCONNECTED
     @Volatile
-
     private var usbConnection: UsbDeviceConnection? = null
     private var serialDevice: UsbSerialDevice? = null
 
@@ -291,6 +290,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     private lateinit var popup2: TextView
     private var isFirstMapMove = true
 
+    @Volatile
+    private var mapMarkerEnabled = true
+    @Volatile
+    private var mapMarkerRunning = false
+
+    private var mapMarkerThread: Thread? = null
+
     // V&V test
     var drone_data_true_count = 0
     var drone_data_fail_count = 0
@@ -393,7 +399,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                 )
             }
         }
-
         // 로그 저장
 
         //prepareFile()
@@ -713,6 +718,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     override fun onDestroy() {
         super.onDestroy()
+        stopMapMarkerThread()
 
 /*        try {
             var logoutputStream = FileOutputStream(fileToWrite)
@@ -795,11 +801,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         googleMap!!.setOnCameraIdleListener {
             custommapzoom = googleMap!!.cameraPosition.zoom
             custommapzoom_scale = when {
-                custommapzoom > 18 -> 1.3f
-                custommapzoom > 16 -> 1.1f
-                custommapzoom > 14 -> 0.9f
-                custommapzoom > 12 -> 0.7f
-                else -> 0.6f
+                custommapzoom > 18 -> 0.75f
+                custommapzoom > 16 -> 0.73f
+                custommapzoom > 14 -> 0.71f
+                custommapzoom > 12 -> 0.67f
+                custommapzoom > 10 -> 0.66f
+                else -> 0.65f
             }
         }
 
@@ -1196,9 +1203,64 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         markerangle!!.remove()
         markerangle = null
     }
-    
+
+    fun runMapmarkerUi(action: () -> Unit) {
+        if (!mapMarkerEnabled) return
+        runOnUiThread {
+            if (mapMarkerEnabled) {
+                action()
+            }
+        }
+    }
+
+    fun startMapMarkerThread() {
+        // 이미 실행 중이면 무시
+        if (mapMarkerRunning) {
+            Log.d("MapMarker", "이미 스레드가 실행 중입니다.")
+            return
+        }
+
+        mapMarkerRunning = true
+
+        mapMarkerThread = Thread {
+            Log.d("MapMarker", "스레드 시작")
+
+            try {
+                while (mapMarkerRunning && !Thread.currentThread().isInterrupted) {
+
+                    // 🔹 실제 작업
+                    Thread.sleep(500)
+                    runMapmarkerUi {
+                        // 예: 지도 마커 업데이트 같은 UI 작업
+                        movemarker(dronelat,dronelong,dronealt,AATlat,AATlong,AATalt)
+                    }
+                }
+            } catch (e: InterruptedException) {
+                Log.d("MapMarker", "스레드 인터럽트됨")
+            } finally {
+                mapMarkerRunning = false
+                Log.d("MapMarker", "스레드 종료")
+            }
+        }
+
+        mapMarkerThread?.start()
+    }
+
+    fun stopMapMarkerThread() {
+        if (!mapMarkerRunning) {
+            Log.d("MapMarker", "실행 중인 스레드 없음")
+            return
+        }
+
+        Log.d("MapMarker", "스레드 종료 요청")
+
+        mapMarkerRunning = false
+        mapMarkerThread?.interrupt()
+        mapMarkerThread = null
+    }
+
     // RF 에서 드론 좌표값 변경시 마다 드론 이미지 및 AAT 이미지 갱신
-    private fun movemarker(dronelatitude: Double, dronelongitude: Double, dronealt : Double, aatlatitude: Double, aatlongitude: Double, aatalt : Double){
+    fun movemarker(dronelatitude: Double, dronelongitude: Double, dronealt : Double, aatlatitude: Double, aatlongitude: Double, aatalt : Double){
         // 드론 좌표값 선언
         val dronelatLng = LatLng(dronelatitude, dronelongitude)
         // AAT 좌표값 선언
@@ -1210,7 +1272,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         val aatstatus = "위도 : " + aatlatitude + "\n경도 : " +  aatlongitude + "\n고도 : " + aatalt
 
         // 드론 좌표와 AAT 좌표를 기반으로 안테나 트레커 각도를 계산
-        val anternnadeg = getBearing(aatlatitude,aatlongitude,dronelatitude,dronelongitude)
+        val epsilon = 1e-9
+        var anternnadeg : Int
+
+        if (AATYaw >= -epsilon && AATYaw <= 360.0 + epsilon) {
+            anternnadeg = AATYaw.toInt()
+        } else {
+            anternnadeg = getBearing(aatlatitude,aatlongitude,dronelatitude,dronelongitude)
+        }
 
         if (markerDrone == null) {
             // 처음 마커 추가
@@ -1226,6 +1295,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markerDrone?.tag = "markerDrone"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
+            markerDrone!!.setIcon(BitmapDescriptorFactory.fromBitmap(
+                getBitmapDescriptorFactoryDrone(
+                    R.drawable.img_drone_org,
+                    custommapzoom_scale
+                )
+            ))
             markerDrone!!.position = dronelatLng
             markerDrone!!.snippet = dronestatus
         }
@@ -1235,8 +1310,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markeranternna = googleMap?.addMarker(
                 MarkerOptions()
                     .icon(
+                        //BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryAnternna(R.drawable.img_aat_org_mk,
+                        //    abs((360F - anternnadeg.toFloat())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
                         BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryAnternna(R.drawable.img_aat_org_mk,
-                            abs((360F - anternnadeg.toFloat())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
+                                abs(alignAngle(anternnadeg.toDouble())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
                         )))
                     .position(aatlatLng)
                     .draggable(true)
@@ -1247,8 +1324,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markeranternna?.tag = "markeranternna"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
+            markeranternna!!.setIcon(BitmapDescriptorFactory.fromBitmap(
+                getBitmapDescriptorFactoryDrone(
+                    R.drawable.img_aat_org_mk,
+                    custommapzoom_scale
+                )
+            ))
             markeranternna!!.position = aatlatLng
-            markeranternna!!.rotation = abs((360F - anternnadeg.toFloat()))
+            markeranternna!!.rotation = abs(alignAngle(anternnadeg.toDouble()))
             markeranternna!!.snippet = aatstatus
         }
 
@@ -1301,8 +1384,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         if(drone_center_is){
             moveCenterMap(dronelatitude,dronelongitude)
         }
-
-
 
         dronepolyline = googleMap?.addPolyline(draonepolylineOptions) // 지도에 선 추가
         aatpolyline = googleMap?.addPolyline(aatpolylineOptions)
@@ -1593,6 +1674,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         RF_connect_Set = true
 
+        startMapMarkerThread()
+        mapMarkerEnabled = true
+
         try {
             pipedOut = PipedOutputStream()
             pipedIn = PipedInputStream(pipedOut)
@@ -1735,7 +1819,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                                         dronelat,dronelong,dronealt,drone_data_true_count+drone_data_fail_count,drone_data_true_count,drone_data_fail_count,error_rate)
                     if(Logchange) newupdateLogView("V&V_Dronedata",dronedatafm)
                 }
-                movemarker(dronelat,dronelong,dronealt,AATlat,AATlong,AATalt)
+                //movemarker(dronelat,dronelong,dronealt,AATlat,AATlong,AATalt)
             }
         }
     }
@@ -1819,6 +1903,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
         // 이전 연결/수신 정리
         disconnectBluetooth()
+        startMapMarkerThread()
+        mapMarkerEnabled = true
 
         Thread {
             try {
@@ -1839,6 +1925,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     newupdateLogView(BluetoothMessage,"connectBluetooth: connecting to $deviceName")
                     Toast.makeText(this, "$deviceName 연결됨", Toast.LENGTH_SHORT).show()
                     change_btn_con_aat_icon(2) // 연결/통신중 아이콘
+                    binding.btnAatConStatus.background = null
+                    aat_center_is = false
                 }
 
                 // ✅ 연결된 상태에서만 수신 스레드 시작
@@ -2360,6 +2448,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
                     newupdateLogView(BluetoothMessage,"Listening thread finished")
                     Toast.makeText(this, "Listening thread finished", Toast.LENGTH_SHORT).show()
                     change_btn_con_aat_icon(0) // 끊김 상태 아이콘
+
                 }
             }
         }.apply {
@@ -2408,7 +2497,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             AATalt = bytesToFloat(altbyteArray).toDouble()
             val yaw_byteArray = byteArrayOf(buffer[26], buffer[27])
             val intyawValue = bytesToShort(yaw_byteArray)
-            //AATYaw = intyawValue.toDouble()
             //val tilt_byteArray = byteArrayOf(buffer[28], buffer[29])
             //val inttiltValue = bytesToShort(tilt_byteArray)
             AATYaw = intyawValue.toDouble()
@@ -2598,6 +2686,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             e.printStackTrace()
             Log.e(ContentValues.TAG, "Error stopping communication", e)
         }
+    }
+
+    fun alignAngle(inputAngle: Double, imageOffset: Double = 90.0): Float {
+        var result = inputAngle - imageOffset
+        if (result < 0) result += 360
+        return result.toFloat()
     }
 
     // Messagebox
