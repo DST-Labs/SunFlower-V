@@ -12,6 +12,16 @@
         android:gravity="bottom|center"
         android:orientation="vertical">
 
+        <TextView
+            android:id="@+id/version_tv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TextView"
+            android:textAlignment="center"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
         <EditText
             android:id="@+id/usernameEdit"
             android:layout_width="match_parent"
@@ -34,6 +44,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="로그인" />
+
     </LinearLayout>
 
 </LinearLayout>

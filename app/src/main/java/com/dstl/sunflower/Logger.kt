@@ -41,7 +41,7 @@ class Logger : Application() {
             val dir = File(getExternalFilesDir(null).toString() + "/Logs")
             if (!dir.exists()) dir.mkdirs()
 
-            val fileName = "Sunflower_log_${SimpleDateFormat("yyyy:MM:dd-HH:mm:ss", Locale.getDefault()).format(Date())}.txt"
+            val fileName = "Sunflower_log_${SimpleDateFormat("yyyy:MM:dd-HH:mm:ss", Locale.getDefault()).format(Date())}.log"
             val file = File(dir, fileName)
 
             logWriter = FileWriter(file, true)  // 이어쓰기 모드
