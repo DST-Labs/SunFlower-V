@@ -100,8 +100,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 
-class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, OnMarkerDragListener, GoogleApiClient.OnConnectionFailedListener,
-    OnMapReadyCallback {
+class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallback {
     private lateinit var binding: ActivityMainBinding // MainActivity의 binding 선언
 
     //private val controllerUSB = ControllerUSB() // USB controller 선언
@@ -381,6 +380,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
         }
 
+        binding.mainVerstionTv.text = "SunFlower V1.0 Copyright (C) 2025 DSTL All Rights Reserved."
+
         // 버튼 이벤트
 
         /*
@@ -649,8 +650,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         providerClient = LocationServices.getFusedLocationProviderClient(this)
         apiClient = GoogleApiClient.Builder(this)
             .addApi(LocationServices.API)
-            .addConnectionCallbacks(this)
-            .addOnConnectionFailedListener(this)
             .build()
 
         if(ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !== PackageManager.PERMISSION_GRANTED) {
@@ -674,7 +673,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
     }
 
     // 최초 앱 실행시 Map 관련 초기화 작업 진행
-    override fun onConnected(p0: Bundle?) {
+    fun onConnected(p0: Bundle?) {
         if(ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) === PackageManager.PERMISSION_GRANTED){
             providerClient.lastLocation.addOnSuccessListener(
                 this@MainActivity,
@@ -691,16 +690,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         }
     }
 
-    // Google Map 기본 인터페이스
-    override fun onConnectionSuspended(p0: Int) {
-    }
-
-    // Google Map 기본 인터페이스
-    override fun onMarkerDragStart(p0: Marker?) {
-    }
-
-    // Google Map 기본 인터페이스
-    override fun onMarkerDrag(p0: Marker?) {
+    override fun onMarkerDrag(p0: Marker) {
+        TODO("Not yet implemented")
     }
 
     // 드론 이미지 드롭시 드론 이미지 위치 변경 및 AAT 좌표 전달 > 드론 테스트용 코드
@@ -709,8 +700,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
         movemarker(marker.position.latitude,marker.position.longitude,TestAppalt,AATlat,AATlong,AATalt)
     }
 
+    override fun onMarkerDragStart(p0: Marker) {
+        TODO("Not yet implemented")
+    }
+
     // Google Map 기본 인터페이스
-    override fun onConnectionFailed(p0: ConnectionResult) {
+    fun onConnectionFailed(p0: ConnectionResult) {
     }
 
     private fun handleMapTap(latLng: LatLng) {
@@ -729,7 +724,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
 
     // Google Map 동작 완료시 구글 맵 선언
-    override fun onMapReady(p0: GoogleMap?) {
+    override fun onMapReady(p0: GoogleMap) {
         googleMap = p0
         with(googleMap) {
             this?.setOnMarkerDragListener(this@MainActivity)
@@ -1108,7 +1103,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             if(markerangle == null) {
                 markerangle = googleMap?.addMarker(
                     MarkerOptions()
-                        .icon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)))
+                        .icon(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)?.let {
+                            BitmapDescriptorFactory.fromBitmap(
+                                it
+                            )
+                        })
                         .position(aatlatLng)
                         .anchor(0.5F,0.5F)
                 )
@@ -1116,10 +1115,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             }
             else {
                 if (changeicon == 0) {
-                    markerangle!!.setIcon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_red,custommapzoom_scale)))
+                    markerangle!!.setIcon(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_red,custommapzoom_scale)?.let {
+                        BitmapDescriptorFactory.fromBitmap(
+                            it
+                        )
+                    })
                 }
                 else if (changeicon == 1) {
-                    markerangle!!.setIcon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)))
+                    markerangle!!.setIcon(getBitmapDescriptorFactoryDrone(R.drawable.img_screen_manualangle_green,custommapzoom_scale)?.let {
+                        BitmapDescriptorFactory.fromBitmap(
+                            it
+                        )
+                    })
                 }
             }
 
@@ -1218,7 +1225,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             // 처음 마커 추가
             markerDrone = googleMap?.addMarker(
                 MarkerOptions()
-                    .icon(BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryDrone(R.drawable.img_drone_org,custommapzoom_scale)))
+                    .icon(getBitmapDescriptorFactoryDrone(R.drawable.img_drone_org,custommapzoom_scale)?.let {
+                        BitmapDescriptorFactory.fromBitmap(
+                            it
+                        )
+                    })
                     .position(dronelatLng)
                     .draggable(true)
                     .anchor(0.5F,0.5F)
@@ -1228,12 +1239,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markerDrone?.tag = "markerDrone"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
-            markerDrone!!.setIcon(BitmapDescriptorFactory.fromBitmap(
-                getBitmapDescriptorFactoryDrone(
-                    R.drawable.img_drone_org,
-                    custommapzoom_scale
+            markerDrone!!.setIcon(getBitmapDescriptorFactoryDrone(
+                R.drawable.img_drone_org,
+                custommapzoom_scale
+            )?.let {
+                BitmapDescriptorFactory.fromBitmap(
+                    it
                 )
-            ))
+            })
             markerDrone!!.position = dronelatLng
             markerDrone!!.snippet = dronestatus
         }
@@ -1243,9 +1256,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markeranternna = googleMap?.addMarker(
                 MarkerOptions()
                     .icon(
-                        BitmapDescriptorFactory.fromBitmap(getBitmapDescriptorFactoryAnternna(R.drawable.img_aat_org_mk,
-                                abs(alignAngle(anternnadeg.toDouble())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
-                        )))
+                        getBitmapDescriptorFactoryAnternna(R.drawable.img_aat_org_mk,
+                            abs(alignAngle(anternnadeg.toDouble())) ,custommapzoom_scale // 안테나 각도계산 기반으로 이미지 회전
+                        )?.let { BitmapDescriptorFactory.fromBitmap(it) })
                     .position(aatlatLng)
                     .draggable(true)
                     .anchor(0.5F,0.5F)
@@ -1255,12 +1268,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
             markeranternna?.tag = "markeranternna"
         } else {
             // 기존 마커 위치, 타이틀, 스니펫만 갱신
-            markeranternna!!.setIcon(BitmapDescriptorFactory.fromBitmap(
-                getBitmapDescriptorFactoryDrone(
-                    R.drawable.img_aat_org_mk,
-                    custommapzoom_scale
+            markeranternna!!.setIcon(getBitmapDescriptorFactoryDrone(
+                R.drawable.img_aat_org_mk,
+                custommapzoom_scale
+            )?.let {
+                BitmapDescriptorFactory.fromBitmap(
+                    it
                 )
-            ))
+            })
             markeranternna!!.position = aatlatLng
             markeranternna!!.rotation = abs(alignAngle(anternnadeg.toDouble()))
             markeranternna!!.snippet = aatstatus
@@ -2435,7 +2450,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks, O
 
     fun totallog(title : String, message : String,  Logger_writeLog: Boolean, newupdateLogView : Boolean , sys_Log : Boolean, Toast : Boolean) {
         if(Logger_writeLog)
-            Logger.writeLog(title, message)
+            Log.d(title, message)
         if(newupdateLogView)
             newupdateLogView(title,message)
         if(sys_Log)
