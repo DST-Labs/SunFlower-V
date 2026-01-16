@@ -20,6 +20,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.content.Context
 
 class LoginActivity : AppCompatActivity() {
 
@@ -39,6 +42,16 @@ class LoginActivity : AppCompatActivity() {
             "https://us-central1-sumflower-a67e3.cloudfunctions.net/backend/auth/login"
     }
 
+    private fun isNetworkAvailable(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
     // OkHttp 재사용
     private val httpClient: OkHttpClient by lazy { OkHttpClient() }
 
@@ -46,7 +59,7 @@ class LoginActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        Log.d(LOG_TAG, "LoginActivity Start!")
+        Logger.writeLog(LOG_TAG, "LoginActivity Start!")
 
         val opts = com.google.firebase.FirebaseApp.getInstance().options
         Log.d(LOG_TAG, "Firebase projectId=${opts.projectId} appId=${opts.applicationId}")
@@ -70,20 +83,20 @@ class LoginActivity : AppCompatActivity() {
             val pw = pwInput.text.toString()
 
             if (username.isEmpty() || pw.isEmpty()) {
-                Log.d(LOG_TAG, "아이디/비밀번호를 입력하세요.")
+                Logger.writeLog(LOG_TAG, "아이디/비밀번호를 입력하세요.")
                 toast("아이디/비밀번호를 입력하세요.")
                 return@setOnClickListener
             }
-            if (username.length > MAX_LEN || pw.length > MAX_LEN) {
-                Log.d(LOG_TAG, "아이디/비밀번호는 최대 32자까지 입력 가능합니다.")
-                toast("아이디/비밀번호는 최대 32자까지 입력 가능합니다.")
+
+            if (!isNetworkAvailable()) {
+                toast("서버 연결 오류")
                 return@setOnClickListener
             }
 
             lifecycleScope.launch {
                 loginBtn.isEnabled = false
                 try {
-                    Log.d(LOG_TAG, "HTTP login start username=$username url=$LOGIN_URL")
+                    Logger.writeLog(LOG_TAG, "HTTP login start username=$username url=$LOGIN_URL")
 
                     // ✅ 네트워크는 IO 스레드에서
                     val resp = withContext(Dispatchers.IO) {
@@ -91,26 +104,40 @@ class LoginActivity : AppCompatActivity() {
                     }
 
                     if (!resp.ok || resp.customToken.isBlank()) {
-                        Log.d(LOG_TAG, "HTTP login bad response: ${resp.raw}")
+                        Logger.writeLog(LOG_TAG, "HTTP login bad response: ${resp.raw}")
                         pwInput.text.clear()
                         pwInput.requestFocus()
-                        toast(resp.userMessage ?: "로그인 실패")
+                        //toast(resp.userMessage ?: "로그인 실패")
+                        toast("로그인 실패")
                         return@launch
                     }
 
                     // ✅ customToken 으로 FirebaseAuth 로그인 (그대로 유지)
                     auth.signInWithCustomToken(resp.customToken).await()
 
-                    Log.d(LOG_TAG, "Firebase customToken 로그인 성공: $username")
+                    getSharedPreferences("auth", MODE_PRIVATE)
+                        .edit()
+                        .putString("token", resp.customToken)
+                        .apply()
+
+                    Logger.writeLog(LOG_TAG, "로그인 성공: $username")
 
                     startActivity(Intent(this@LoginActivity, MainActivity::class.java))
                     finish()
 
                 } catch (e: Exception) {
-                    Log.d(LOG_TAG, "Login FAIL: ${e.message}")
+                    Logger.writeLog(LOG_TAG, "Login FAIL: ${e.message}")
                     pwInput.text.clear()
                     pwInput.requestFocus()
-                    toast("로그인 실패")
+                    when (e) {
+                        is java.io.IOException -> {
+                            // 서버 연결 실패 / 타임아웃 / DNS / 네트워크 끊김
+                            toast("서버 연결 오류")
+                        }
+                        else -> {
+                            toast("로그인 실패")
+                        }
+                    }
                 } finally {
                     loginBtn.isEnabled = true
                 }

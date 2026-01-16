@@ -326,6 +326,9 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         if(bluetoothSocket?.isConnected == true){
             sendStopREQ()
         }
+        stopMapMarkerThread()
+        stopUsbCommunication()
+        disconnectBluetooth()
         unregisterReceiver(bluetoothReceiver)
         unregisterReceiver(usbPermissionReceiver)
         unregisterReceiver(usbAttachDetachReceiver)
@@ -346,8 +349,10 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
             .getString("token", null)
 
         if (token == null) {
-            // 토큰 없으면 로그인 화면으로 되돌림
-            startActivity(Intent(this, LoginActivity::class.java))
+            val i = Intent(this, LoginActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(i)
             finish()
             return
         }
@@ -540,12 +545,14 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                     change_btn_con_manual_icon(1)
                     manualanglemarker(AATlat,AATlong,1)
                     isManualAngle_touch = true
+                    totallog(AATLog,"안테나 수동 조작 실행",true,false,true,true)
                 }
                 else {
                     change_btn_con_manual_icon(0)
                     removemanualanglemarker()
                     isManualAngle_touch = false
                     Send_Drone_LOC_IND(dronelat, dronelong, dronealt)
+                    totallog(AATLog,"안테나 수동 조작 종료",true,false,true,true)
                 }
             }
             else {
@@ -668,7 +675,6 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
     override fun onDestroy() {
         super.onDestroy()
-        stopMapMarkerThread()
         totallog(ApplcationLog,"MainActivity Destroy!",true,false,true,false)
     }
 
@@ -799,6 +805,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         if(status == 0){
             binding.btnAatConStatus.setImageResource(R.drawable.img_aat_red)
             btn_bt_status = 0
+            binding.btnAatConStatus.background = null
         }
         else if(status == 1){
             binding.btnAatConStatus.setImageResource(R.drawable.img_aat_yellow)
@@ -813,6 +820,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     private fun change_btn_con_drone_icon(status: Int) {
         if(status == 0){
             binding.btnDroneConStatus.setImageResource(R.drawable.img_drone_red)
+            binding.btnDroneConStatus.background = null
             btn_usb_status = 0
         }
         else if(status == 1){
@@ -1150,7 +1158,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     fun startMapMarkerThread() {
         // 이미 실행 중이면 무시
         if (mapMarkerRunning) {
-            totallog("Autofly","이미 스레드가 실행 중입니다",true,false,false,false)
+            //totallog("Autofly","이미 스레드가 실행 중입니다",true,false,false,false)
             //Log.d("MapMarker", "이미 스레드가 실행 중입니다.")
             return
         }
@@ -1158,7 +1166,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         mapMarkerRunning = true
 
         mapMarkerThread = Thread {
-            totallog("Autofly","Autofly 스레드 시작",true,false,false,false)
+            //totallog("Autofly","Autofly 스레드 시작",true,false,false,false)
             //Log.d("MapMarker", "스레드 시작")
 
             try {
@@ -1172,11 +1180,11 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                     }
                 }
             } catch (e: InterruptedException) {
-                totallog("Autofly","스레드 인터럽트됨",true,false,false,false)
+                //totallog("Autofly","스레드 인터럽트됨",true,false,false,false)
                 //Log.d("MapMarker", "스레드 인터럽트됨")
             } finally {
                 mapMarkerRunning = false
-                totallog("Autofly","스레드 종료",true,false,false,false)
+                //totallog("Autofly","스레드 종료",true,false,false,false)
                 //Log.d("MapMarker", "스레드 종료")
             }
         }
@@ -1205,7 +1213,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         // AAT 좌표값 선언
         val aatlatLng = LatLng(aatlatitude, aatlongitude)
 
-        //totallog("Autofly","receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt,true,false,false,false)
+        totallog("Autofly","receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt,true,false,false,false)
         //Log.d(ContentValues.TAG, "receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt)
 
         val dronestatus = "위도 : " + String.format("%.7f", dronelatitude) + "\n경도 : " +  String.format("%.7f", dronelongitude) + "\n고도 : " + String.format("%.1f", dronealt)
@@ -1505,7 +1513,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         mavlinkDataProcessor?.stop()
         mavlinkDataProcessor = null
 
-        totallog(DroneLog,"Drone USB stop connect!",true,true,false,false)
+        totallog(DroneLog,"드론(텔레메트리) 연결 끊김",true,true,false,true)
 
         // 2) 🔥 이게 핵심: next()를 깨운다
         try { pipedIn?.close() } catch (_: Exception) {}
@@ -1521,7 +1529,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         usbConnection = null
 
         change_btn_con_drone_icon(0)
-        binding.btnDroneConStatus.background = null
+        //binding.btnDroneConStatus.background = null
         drone_center_is = false
     }
 
@@ -1534,7 +1542,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                     //handleBluetoothDevice(intent)
                     bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
                     if (bluetoothAdapter == null) { // 디바이스가 블루투스를 지원하지 않을 때
-                        totallog(BluetoothLog,"블루투스 미지원 기기입니다.",true,false,true,true)
+                        totallog(BluetoothLog,"블루투스 미지원 기기입니다.",true,false,true,false)
                         //Toast.makeText(applicationContext, "블루투스 미지원 기기입니다.", Toast.LENGTH_LONG).show()
                     } else { // 디바이스가 블루투스를 지원 할 때
 
@@ -1544,7 +1552,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                             // 블루투스를 활성화 하기 위한 다이얼로그 출력
                             // 선택한 값이 onActivityResult 함수에서 콜백
                             //startActivityForResult(intent, 1)
-                            totallog(BluetoothLog,"블루투스를 활성화 해주세요.",true,false,true,true)
+                            totallog(BluetoothLog,"블루투스를 활성화 해주세요.",true,false,true,false)
                             //Toast.makeText(applicationContext, "블루투스를 활성화 해주세요.", Toast.LENGTH_LONG).show()
                         }
 
@@ -1559,7 +1567,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
     private fun onDeviceSelected(device: UsbDevice) {
 
-        stopUsbCommunication()
+        //stopUsbCommunication()
 
         usbConnection = usbManager?.openDevice(device)
         if (usbConnection == null) {
@@ -1603,6 +1611,8 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                     totallog(DroneLog,"Pipe write error",true,true,true,false)
                 }
             }
+            totallog(DroneLog,"드론(텔레메트리) 연결",true,true,false,true)
+
             totallog(DroneLog,"Drone MAVLink Data Start!",true,true,false,false)
 
             val mavlinkConnection = MavlinkConnection.create(
@@ -1721,7 +1731,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         // 페어링 되어있는 장치가 없는 경우
         if (pariedDeviceCount == 0) {
             // 페어링을 하기위한 함수 호출
-            totallog(AATLog,"먼저 Bluetooth 설정에 들어가 페어링 해주세요",true,false,true,true)
+            totallog(AATLog,"먼저 Bluetooth 설정에 들어가 페어링 해주세요",true,false,true,false)
             //Toast.makeText(applicationContext, "먼저 Bluetooth 설정에 들어가 페어링 해주세요", Toast.LENGTH_SHORT).show()
         } else {
             // 디바이스를 선택하기 위한 다이얼로그 생성
@@ -1755,7 +1765,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         // 이름으로 디바이스 찾기
         val targetDevice = devices?.firstOrNull { it.name == deviceName }
         if (targetDevice == null) {
-            totallog(BluetoothLog,"선택한 Bluetooth 디바이스를 찾을 수 없습니다.",true,false,true,true)
+            totallog(BluetoothLog,"선택한 Bluetooth 디바이스를 찾을 수 없습니다.",true,false,true,false)
             //Toast.makeText(this, "선택한 디바이스를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1778,7 +1788,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                 BT_connect_Set = true
 
                 runOnUiThread {
-                    totallog(BluetoothLog,"$deviceName 연결 성공",true,true,true,true)
+                    totallog(BluetoothLog,"$deviceName 연결",true,true,true,true)
                     change_btn_con_aat_icon(2) // 연결/통신중 아이콘
                     binding.btnAatConStatus.background = null
                     aat_center_is = false
@@ -1790,8 +1800,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
             } catch (e: Exception) {
                 runOnUiThread {
-                    //newupdateLogView(BluetoothMessage,"connectBluetooth: 연결 실패")
-                    totallog(BluetoothLog,"connectBluetooth: 연결 실패",true,true,true,true)
+                    totallog(BluetoothLog,"블루투스 연결 실패 : "+ e.message,true,true,true,true)
                     change_btn_con_aat_icon(0) // 끊김/미연결 아이콘
                     change_btn_con_manual_icon(0)
                 }
@@ -1802,7 +1811,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     }
 
     fun disconnectBluetooth() {
-        totallog(BluetoothLog,"Bluetooth 연결해제",true,true,false,false)
+        totallog(BluetoothLog,"블루투스 연결 끊김",true,true,false,true)
         stopListeningForMessages()
 
         try {
@@ -2128,7 +2137,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                                             } catch (e: NullPointerException) {
                                                 totallog(AATLog,"NullPointerException in receiveREQ",true,false,true,false)
                                             } catch (e: Exception) {
-                                                totallog(AATLog,"Exception in receiveREQ",true,false,true,false)
+                                                //(AATLog,"Exception in receiveREQ",true,false,true,false)
                                             }
                                         }
                                     }
@@ -2150,6 +2159,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
                 runOnUiThread {
                     totallog(AATLog,"Bluetooth(AAT) message Thread stop!",true,true,true,false)
                     change_btn_con_aat_icon(0) // 끊김 상태 아이콘
+                    disconnectBluetooth()
                 }
             }
         }.apply {
@@ -2357,20 +2367,6 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         }
     }
 
-    // 내부 Message 기록
-    private fun newupdateLogView(send: String , message: String) {
-        val maxline = 200
-        val lines = binding.tvLog.text.split("\n").toMutableList()
-        val localDataTime : LocalDateTime = LocalDateTime.now()
-        var updatasting = "$localDataTime : [$send] - $message\n"
-        lines.add(0,updatasting)
-
-        if(lines.size > maxline) {
-            lines.subList(maxline, lines.size).clear()
-        }
-
-        binding.tvLog.text = lines.joinToString("\n")
-    }
 
     // 로그 화면 드론 좌표값 업데이트
     private fun updatedroneLogview(lat : String, long : String, alt : String) {
@@ -2448,16 +2444,78 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
             .show()
     }
 
-    fun totallog(title : String, message : String,  Logger_writeLog: Boolean, newupdateLogView : Boolean , sys_Log : Boolean, Toast : Boolean) {
-        if(Logger_writeLog)
-            Log.d(title, message)
-        if(newupdateLogView)
-            newupdateLogView(title,message)
-        if(sys_Log)
-            Log.d(title, message)
-        if(Toast)
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+    private val uiHandler = Handler(Looper.getMainLooper())
 
+    fun totallog(
+        title: String,
+        message: String,
+        Logger_writeLog: Boolean,
+        newupdateLogView: Boolean,
+        sys_Log: Boolean,
+        Toast: Boolean
+    ) {
+        // 로그는 어느 스레드든 OK
+        if (Logger_writeLog) {
+            Logger.writeLog(title, message)
+        }
+        if (sys_Log) {
+            Log.d(title, message)
+        }
+
+        // UI 관련은 무조건 메인 스레드로
+        if (newupdateLogView || Toast) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                handleUiLog(title, message, newupdateLogView, Toast)
+            } else {
+                uiHandler.post {
+                    handleUiLog(title, message, newupdateLogView, Toast)
+                }
+            }
+        }
+    }
+
+    private fun handleUiLog(
+        title: String,
+        message: String,
+        newupdateLogView: Boolean,
+        Toast: Boolean
+    ) {
+        if (newupdateLogView) {
+            newupdateLogView(title, message)
+        }
+        if (Toast) {
+            android.widget.Toast
+                .makeText(this, message, android.widget.Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
+
+    // 내부 Message 기록
+    private fun newupdateLogView(send: String, message: String) {
+        // 메인 스레드가 아니면 메인으로 넘기고 종료
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            uiHandler.post { newupdateLogView(send, message) }
+            return
+        }
+
+        val maxline = 200
+
+        val currentText = binding.tvLog.text?.toString().orEmpty()
+        val lines = if (currentText.isBlank()) mutableListOf<String>()
+        else currentText.split("\n").toMutableList()
+
+        val localDateTime = LocalDateTime.now()
+        val updateString = "$localDateTime : [$send] - $message"
+
+        // 최신 로그를 맨 위에
+        lines.add(0, updateString)
+
+        // maxline 유지
+        if (lines.size > maxline) {
+            lines.subList(maxline, lines.size).clear()
+        }
+
+        binding.tvLog.text = lines.joinToString("\n")
     }
 }
 
