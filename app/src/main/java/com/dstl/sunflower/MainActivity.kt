@@ -105,7 +105,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
     //private val controllerUSB = ControllerUSB() // USB controller 선언
     private val controllerBT = ControllerBT() // bluetooth controller 선언
-    private val controllerSerial = ControllerSerial(this) // Serial controller 선언
+    //private val controllerSerial = ControllerSerial(this) // Serial controller 선언
 
     // USB 선언
     private var usbDevice: UsbDevice? = null // USB 디바이스 목록
@@ -250,7 +250,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     var CountSendDroneLOC_IND : Int = 0 // 비행 시뮬레이터 개수 확인용 변수 > 마커 개수
     var CountSendDroneLOC_gps : Int = 0 // 비행 시뮬레이터 개수 확인용 변수 > GPS 개수
 
-    val dronelogv : String = "Drone Protocol Log" // 비행 시뮬레이터 로그 용 tag
+    //val dronelogv : String = "Drone Protocol Log" // 비행 시뮬레이터 로그 용 tag
 
     // 화면 Log 창 관련 변수 선언
     private lateinit var magframeLayout: FrameLayout // 화면 로그창 프레임 레이아웃
@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
     // tester 모드 활성화
     var testercount = 0
-    var testermodeon = false
+    //var testermodeon = false
 
     // marker
 
@@ -291,7 +291,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     var aat_REQ_time : Long = 0
 
 
-    val Logchange = false // 0 : normal , 1 : V&V
+    //val Logchange = false // 0 : normal , 1 : V&V
 
     // manual angle
     var isManualAngle = false
@@ -474,9 +474,9 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         binding.btnLogo.setOnClickListener {
             testercount ++
             if (testercount == 5) {
-                testermodeon = !testermodeon
-                testermodeon(testermodeon)
-                testercount = 0
+                //testermodeon = !testermodeon
+                //testermodeon(testermodeon)
+                //testercount = 0
             }
         }
 
@@ -1213,7 +1213,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         // AAT 좌표값 선언
         val aatlatLng = LatLng(aatlatitude, aatlongitude)
 
-        totallog("Autofly","receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt,true,false,false,false)
+        //totallog("Autofly","receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt,true,false,false,false)
         //Log.d(ContentValues.TAG, "receive set Marker AATlat : " + aatlatitude + " AATlong : " + aatlongitude +  " AATAlt : " + aatalt + " Dronelat : " + dronelatitude + " Dronelong : " + dronelongitude+ " Dronealt : " + dronealt)
 
         val dronestatus = "위도 : " + String.format("%.7f", dronelatitude) + "\n경도 : " +  String.format("%.7f", dronelongitude) + "\n고도 : " + String.format("%.1f", dronealt)
