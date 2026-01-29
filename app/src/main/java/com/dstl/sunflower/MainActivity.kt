@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     //private val controllerSerial = ControllerSerial(this) // Serial controller 선언
 
     // USB 선언
-    private var usbDevice: UsbDevice? = null // USB 디바이스 목록
+    //private var usbDevice: UsbDevice? = null // USB 디바이스 목록
     private var usbManager : UsbManager? = null // USB 디바이스 메니저
     private var usbHelper: UsbHelper? = null // USB 디바이스 헬퍼
     //private var usbdevicename : String? = null // USB 디바이스 이름
@@ -135,7 +135,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
     // Bluetooth 선언
     var BluetoothMessage : String = "Bluetooth Message"
     private var bluetoothAdapter: BluetoothAdapter? = null // 블루투스 어댑터
-    private var bluetoothDevice: BluetoothDevice? = null // 블루투스 디바이스 목록
+    //private var bluetoothDevice: BluetoothDevice? = null // 블루투스 디바이스 목록
     private var devices: Set<BluetoothDevice>? = null // 블루투스 디바이스 데이터 셋
     private var bluetoothSocket: BluetoothSocket? = null // 블루투스 소켓
     var pariedDeviceCount: Int = 0 // 블루투스 페어링 디바이스 크기
