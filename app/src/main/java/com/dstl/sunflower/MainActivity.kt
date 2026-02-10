@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
 
     // tester 모드 활성화
     var testercount = 0
-    //var testermodeon = false
+    var testermodeon = false
 
     // marker
 
