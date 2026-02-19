@@ -8,7 +8,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
-import android.content.ContentValues
+//import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -48,7 +48,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isInvisible
 import com.dstl.sunflower.databinding.ActivityMainBinding
 import com.example.connector.bluetooth.ControllerBT
-import com.example.connector.serial.ControllerSerial
+//import com.example.connector.serial.ControllerSerial
 import com.felhr.usbserial.UsbSerialDevice
 import com.felhr.usbserial.UsbSerialInterface
 import com.google.android.gms.common.ConnectionResult
@@ -474,9 +474,9 @@ class MainActivity : AppCompatActivity(), OnMarkerDragListener, OnMapReadyCallba
         binding.btnLogo.setOnClickListener {
             testercount ++
             if (testercount == 5) {
-                //testermodeon = !testermodeon
-                //testermodeon(testermodeon)
-                //testercount = 0
+                testermodeon = !testermodeon
+                testermodeon(testermodeon)
+                testercount = 0
             }
         }
 

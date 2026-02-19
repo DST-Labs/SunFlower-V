@@ -72,7 +72,7 @@ class LoginActivity : AppCompatActivity() {
         idInput.filters = arrayOf(InputFilter.LengthFilter(MAX_LEN))
         pwInput.filters = arrayOf(InputFilter.LengthFilter(MAX_LEN))
 
-        versionTv.text = "Sunflower V1.0"
+        versionTv.text = "SunFlower V1.0"
 
         // 테스트값(원하면 삭제)
         //idInput.setText("user001")
